@@ -35,7 +35,8 @@ jobs:
         env:
           BACKUP_LOGIN: ${{ secrets.BACKUP_LOGIN }}
         run: |
-          if grep -q __BACKUP_LOGIN__ CineMe/Backup.swift; then
+          # Without the secret the placeholder stays; DEVELOPMENT_FILES/ios/tools/patch-login.py puts the login in the .ipa on the PC.
+          if [ -n "$BACKUP_LOGIN" ] && grep -q __BACKUP_LOGIN__ CineMe/Backup.swift; then
             sed -i '' "s|__BACKUP_LOGIN__|$BACKUP_LOGIN|" CineMe/Backup.swift
           fi
 
