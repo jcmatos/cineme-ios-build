@@ -248,8 +248,7 @@ final class Camera: NSObject, ObservableObject, AVCaptureFileOutputRecordingDele
     /// The lens's formats in Documents/formats-<lens>.txt (Files > CineMe), to read them off the phone.
     static func saveFormats(_ list: [String], lens: String) {
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        try? list.joined(separator: "
-").write(to: dir.appendingPathComponent("formats-\(lens).txt"), atomically: true, encoding: .utf8)
+        try? list.joined(separator: "\n").write(to: dir.appendingPathComponent("formats-\(lens).txt"), atomically: true, encoding: .utf8)
     }
 
     /// Settings > Sound changed: only the mic input changes (ProAV.swift).
