@@ -196,7 +196,7 @@ let helpSections: [(String, [String])] = [
         "The gear (bottom right): settings over the left of the picture (the bottom in portrait). A page per subject in the column on the left; tap the picture or Close to go back.",
         "Video: resolution, frame rate, codec (HEVC, H.264, ProRes, ProRes RAW), colour (SDR, HDR Dolby Vision, Apple Log 2, Apple Log), record signal. Image: stabilization.",
         "Auto: where Auto aims, in steps of 0.2 stop. Photo: RAW, HEIC or JPEG, slowest shutter for Auto.",
-        "Save to: this iPhone or a folder on a USB-C drive (ProRes 4K 120 fps needs the drive), Copy to Photos, Place, the take log.",
+        "Save to: this iPhone or a folder on a USB-C drive (ProRes RAW, and ProRes 4K 120 fps, need the drive), Copy to Photos, Place, the take log.",
         "Screen: Vibrate on taps (with its strength), histogram, grid, golden spiral. Exposure: zebras and false colour. Focus: peaking and sharp areas.",
         "Sound: mono, stereo or spatial, wind, the microphone, the sound meters. Timecode and Anamorphic: their own pages.",
         "Backup, Tracking, Gimbal and Remote: their own pages. Formats: what the lens really has.",

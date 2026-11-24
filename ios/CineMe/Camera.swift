@@ -229,6 +229,9 @@ final class Camera: NSObject, ObservableObject, AVCaptureFileOutputRecordingDele
             }
         }
         let codecOK = movie.availableVideoCodecTypes.contains(codec.type)
+        if codec.isRAW, UserDefaults.standard.data(forKey: "extBookmark") == nil {
+            publish { self.message = "ProRes RAW records only to a USB-C drive (Settings > Save to)" }
+        }
         if codec.isRAW {
             RecLog.w("ProRes RAW: \(fmt.summary); codec offered: \(codecOK) (offered: \(movie.availableVideoCodecTypes.map(\.rawValue).joined(separator: ", ")))")
         }
@@ -488,7 +491,20 @@ final class Camera: NSObject, ObservableObject, AVCaptureFileOutputRecordingDele
         }
         let name = "CineMe_" + Camera.stamp.string(from: Date()) + ".mov"
         var folder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        if let ext = resolveExternal() { folder = ext }
+        let ext = resolveExternal()
+        if let ext = ext { folder = ext }
+        // Apple lets ProRes RAW go only to an external drive: to the phone's own storage
+        // startRecording throws (an uncatchable crash, seen 24 Nov 2026 on iOS 27).
+        if codec.isRAW {
+            let internal = ext.flatMap { try? $0.resourceValues(forKeys: [.volumeIsInternalKey]).volumeIsInternal } ?? false
+            if ext == nil || internal {
+                let why = "ProRes RAW records only to a USB-C drive: plug one in and pick it in Settings > Save to"
+                RecLog.w("NOT RECORDED: \(why)")
+                Beeper.shared.alarm()
+                publish { self.notRecorded = why }
+                return
+            }
+        }
         let url = folder.appendingPathComponent(name)
         if let c = movie.connection(with: .video), let r = rotation {
             let a = r.videoRotationAngleForHorizonLevelCapture
