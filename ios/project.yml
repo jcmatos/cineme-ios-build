@@ -1,0 +1,112 @@
+# The iPhone app's Xcode project, made by XcodeGen on GitHub's Mac (this PC is Windows and has no Xcode).
+# CI: .github/workflows/ios.yml runs `xcodegen generate` here, then builds an unsigned .ipa.
+name: CineMe
+options:
+  bundleIdPrefix: ca.channel13
+  deploymentTarget:
+    iOS: "18.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  CineMe:
+    type: application
+    platform: iOS
+    sources:
+      - path: CineMe
+        excludes:
+          - "*.md"   # THEME-API.md: notes for the code, not for the app bundle
+      - CineMeShared
+    # Embedded: the widgets (Control Center control, Live Activity) in PlugIns/, the lock screen
+    # camera in Extensions/.
+    dependencies:
+      - target: CineMeWidgets
+      - target: CineMeCapture
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ca.channel13.cineme
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_FILE: CineMe/Info.plist
+    info:
+      path: CineMe/Info.plist
+      properties:
+        CFBundleDisplayName: CineMe
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        # Jost, the Android app's typeface (CineMe/Fonts/Jost.ttf, a resource of the CineMe folder).
+        UIAppFonts:
+          - Jost.ttf
+        UIRequiresFullScreen: true
+        UIStatusBarHidden: true
+        UIViewControllerBasedStatusBarAppearance: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationLandscapeRight
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationPortrait
+        NSCameraUsageDescription: CineMe films with the cameras.
+        NSMicrophoneUsageDescription: CineMe records sound with the video, and voice notes.
+        NSPhotoLibraryAddUsageDescription: CineMe saves the clips to Photos.
+        NSBluetoothAlwaysUsageDescription: CineMe talks to the Zhiyun gimbal over Bluetooth.
+        NSLocationWhenInUseUsageDescription: CineMe puts the place in clips and photos, to group footage by place.
+        NSPhotoLibraryUsageDescription: CineMe backs up the iPhone camera's photos and videos, and deletes the ones you marked on the backup site.
+        # Backup (Backup.swift): a background run iOS starts when it likes.
+        BGTaskSchedulerPermittedIdentifiers:
+          - ca.channel13.cineme.backup
+        UIBackgroundModes:
+          - processing
+        # Clips Photos can't take (ProRes RAW) stay in Files > On My iPhone > CineMe.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        ITSAppUsesNonExemptEncryption: false
+        NSSupportsLiveActivities: true
+
+  # Control Center / lock screen control + the take's Live Activity. A classic app extension (PlugIns/).
+  CineMeWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - CineMeWidgets
+      - CineMeShared          # CaptureIntent.swift (the control runs it) + TakeActivity.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ca.channel13.cineme.widgets
+        TARGETED_DEVICE_FAMILY: "1"
+    info:
+      path: CineMeWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: CineMe
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+
+  # The lock screen camera. An ExtensionKit extension (Extensions/), as in Apple's AVCam sample
+  # (XcodeGen type extensionkit-extension, XcodeGen 2.31+; brew gives the newest).
+  CineMeCapture:
+    type: extensionkit-extension
+    platform: iOS
+    sources:
+      - CineMeCapture
+      - path: CineMeShared/CaptureIntent.swift
+      - path: CineMe/Formats.swift   # Lens, Resolution, Look, Codec, pickFormat: the app's format choices
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ca.channel13.cineme.capture
+        TARGETED_DEVICE_FAMILY: "1"
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks"
+    info:
+      path: CineMeCapture/Info.plist
+      properties:
+        CFBundleDisplayName: CineMe
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        EXAppExtensionAttributes:
+          EXExtensionPointIdentifier: com.apple.securecapture
+        NSCameraUsageDescription: CineMe films with the cameras.
+        NSMicrophoneUsageDescription: CineMe records sound with the video.
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait

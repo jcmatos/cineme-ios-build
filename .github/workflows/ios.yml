@@ -1,0 +1,83 @@
+# The iPhone app (ios/), built on GitHub's Macs: this PC is Windows and Xcode runs only on macOS.
+# Unsigned: Impactor on the PC signs it with a free Apple ID when it installs it (lasts 7 days).
+# Guide: C:\Vordik\claude\@personal\telix\docs\iphone\README.md
+#
+# Started by hand only (`gh workflow run ios.yml`): Mac minutes count ten times on a private repo.
+# The result is the artifact `CineMe-ios`, a zip holding CineMe.ipa.
+name: iPhone app
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    # Xcode 27 = the iOS 27 SDK (the 18 Pro's aperture API). Images are named by Xcode version now.
+    runs-on: xcode-27
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The newest Xcode on the runner
+        run: |
+          ls -d /Applications/Xcode*.app
+          XCODE=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          echo "Using $XCODE"
+          sudo xcode-select -s "$XCODE/Contents/Developer"
+          xcodebuild -version
+          # The iPhone 18 Pro's variable aperture API is in the iOS 27 SDK (Xcode 27).
+          MAJOR=$(xcodebuild -version | head -1 | sed -E 's/Xcode ([0-9]+).*/\1/')
+          if [ "$MAJOR" -ge 27 ]; then echo "EXTRA=HAS_IOS27_SDK" >> $GITHUB_ENV; else echo "EXTRA=" >> $GITHUB_ENV; fi
+
+      - name: The backup login (only in the public build repo, where it is scrubbed)
+        env:
+          BACKUP_LOGIN: ${{ secrets.BACKUP_LOGIN }}
+        run: |
+          if grep -q __BACKUP_LOGIN__ CineMe/Backup.swift; then
+            sed -i '' "s|__BACKUP_LOGIN__|$BACKUP_LOGIN|" CineMe/Backup.swift
+          fi
+
+      - name: The Xcode project (XcodeGen)
+        run: |
+          brew install xcodegen
+          xcodegen --version
+          xcodegen generate
+
+      - name: Build, unsigned
+        run: |
+          set -o pipefail
+          xcodebuild -project CineMe.xcodeproj -scheme CineMe -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS="\$(inherited) $EXTRA" \
+            build | tee xcodebuild.log | grep -E "error:|\*\* BUILD" || true
+          test -d build/Build/Products/Release-iphoneos/CineMe.app
+          # The extensions are inside: the widgets (Control Center, Live Activity) and the lock screen camera.
+          test -d build/Build/Products/Release-iphoneos/CineMe.app/PlugIns/CineMeWidgets.appex
+          test -d build/Build/Products/Release-iphoneos/CineMe.app/Extensions/CineMeCapture.appex
+
+      - name: The .ipa files (full, and lite without extensions)
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/CineMe.app Payload/
+          zip -qry CineMe.ipa Payload
+          # Lite: only the app (Siri / Shortcuts still work; no lock screen camera, control or Live Activity).
+          rm -rf Payload/CineMe.app/PlugIns Payload/CineMe.app/Extensions
+          zip -qry CineMe-lite.ipa Payload
+          ls -la CineMe.ipa CineMe-lite.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CineMe-ios
+          path: ios/*.ipa
+          retention-days: 14
+
+      - name: The build log, when it failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: ios/xcodebuild.log
+          retention-days: 7

@@ -1,0 +1,74 @@
+# Screenshots of the iPhone app from the simulator on GitHub's Mac, so the screens can be checked
+# from Windows (no camera or Bluetooth there: layout and buttons only). Started by hand:
+#   gh workflow run ios-shots.yml
+# The result is the artifact `CineMe-shots` (PNG files: <screen>-<orientation>.png).
+name: iPhone screenshots
+
+on:
+  workflow_dispatch:
+
+jobs:
+  shots:
+    runs-on: xcode-27
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          sudo xcode-select -s "$XCODE/Contents/Developer"
+          xcodebuild -version
+          MAJOR=$(xcodebuild -version | head -1 | sed -E 's/Xcode ([0-9]+).*/\1/')
+          if [ "$MAJOR" -ge 27 ]; then echo "EXTRA=HAS_IOS27_SDK" >> $GITHUB_ENV; else echo "EXTRA=" >> $GITHUB_ENV; fi
+
+      - name: Build for the simulator
+        run: |
+          brew install xcodegen
+          xcodegen generate
+          set -o pipefail
+          xcodebuild -project CineMe.xcodeproj -scheme CineMe -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO SWIFT_ACTIVE_COMPILATION_CONDITIONS="\$(inherited) DEBUG $EXTRA" \
+            build | tee xcodebuild.log | grep -E "error:|\*\* BUILD" || true
+          test -d build/Build/Products/Debug-iphonesimulator/CineMe.app
+
+      - name: Screenshots
+        run: |
+          # The newest Pro iPhone the simulator has (iPhone 18 Pro if there).
+          DEV=$(xcrun simctl list devices available -j | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)['devices']
+          names=[(r,x['name'],x['udid']) for r,l in d.items() for x in l if 'iPhone' in x['name']]
+          pro=[n for n in names if 'Pro' in n[1] and 'Max' not in n[1]] or names
+          print(sorted(pro)[-1][2]); print(sorted(pro)[-1][1], file=sys.stderr)")
+          xcrun simctl boot "$DEV"
+          xcrun simctl bootstatus "$DEV" -b
+          xcrun simctl install "$DEV" build/Build/Products/Debug-iphonesimulator/CineMe.app
+          xcrun simctl privacy "$DEV" grant all ca.channel13.cineme || true
+          mkdir -p shots
+          for s in camera:landscape camera:portrait settings:landscape library:landscape library:portrait player:landscape level:landscape moves:landscape timelapse:landscape tracking:landscape remote:landscape note:landscape guides:landscape histogram:landscape peaking:landscape focusring:landscape help:landscape photo:landscape photo:portrait backup:landscape zebras:landscape falsecolour:landscape falsecolour:portrait meters:landscape meters:portrait sound:landscape timecode:landscape anamorphic:landscape anamorphic:portrait fonttest:landscape wb:landscape wb:portrait focus:landscape measuring:landscape notrecorded:landscape movearmed:landscape gimbal:landscape settings:portrait set-auto:landscape set-photo:landscape set-screen:landscape set-focus:landscape set-tracking:landscape set-gimbal:landscape set-exposure:landscape; do
+            screen=${s%%:*}; orient=${s##*:}
+            xcrun simctl terminate "$DEV" ca.channel13.cineme 2>/dev/null || true
+            xcrun simctl launch "$DEV" ca.channel13.cineme -shot "$screen" -orient "$orient"
+            sleep 9
+            xcrun simctl io "$DEV" screenshot "shots/$screen-$orient.png"
+          done
+          ls -la shots
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CineMe-shots
+          path: ios/shots
+          retention-days: 14
+
+      - name: The build log, when it failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: ios/xcodebuild.log
+          retention-days: 7
