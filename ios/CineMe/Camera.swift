@@ -196,9 +196,14 @@ final class Camera: NSObject, ObservableObject, AVCaptureFileOutputRecordingDele
 
         let list = dev.formats.map { $0.summary }
         publish { self.formatsList = list }
+        Camera.saveFormats(list, lens: lens.label)
 
         guard let fmt = pickFormat(dev, res: resolution, fps: fps, look: look, codec: codec) else {
             let what = "\(resolution.rawValue) \(fps) fps \(codec.isRAW ? "" : look.rawValue + " ")\(codec.rawValue)"
+            if codec.isRAW {
+                let raw = dev.formats.filter { $0.isRawLike }.map { $0.summary }
+                RecLog.w("no RAW format for \(what) on \(lens.label); sensor formats: " + (raw.isEmpty ? "none" : raw.joined(separator: " | ")))
+            }
             publish { self.problem = "\(self.lens.label) can't record \(what)"; self.formatText = what }
             return
         }
@@ -224,6 +229,9 @@ final class Camera: NSObject, ObservableObject, AVCaptureFileOutputRecordingDele
             }
         }
         let codecOK = movie.availableVideoCodecTypes.contains(codec.type)
+        if codec.isRAW {
+            RecLog.w("ProRes RAW: \(fmt.summary); codec offered: \(codecOK) (offered: \(movie.availableVideoCodecTypes.map(\.rawValue).joined(separator: ", ")))")
+        }
         let range = fmt.minISO...fmt.maxISO
         let stops = apertureStopsOf(fmt)
         let text = "\(resolution.rawValue)\(fps) \(codec.isRAW ? "" : look.rawValue + " · ")\(codec.rawValue)"
@@ -235,6 +243,13 @@ final class Camera: NSObject, ObservableObject, AVCaptureFileOutputRecordingDele
             self.problem = codecOK ? nil : "\(self.codec.rawValue) isn't offered for this format"
         }
         applyAll()
+    }
+
+    /// The lens's formats in Documents/formats-<lens>.txt (Files > CineMe), to read them off the phone.
+    static func saveFormats(_ list: [String], lens: String) {
+        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        try? list.joined(separator: "
+").write(to: dir.appendingPathComponent("formats-\(lens).txt"), atomically: true, encoding: .utf8)
     }
 
     /// Settings > Sound changed: only the mic input changes (ProAV.swift).

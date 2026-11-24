@@ -107,6 +107,13 @@ extension AVCaptureDevice.Format {
     var isTenBit: Bool { tenBitSubtypes.contains(subtype) }
     /// Not a normal YUV picture: the RAW (Bayer) formats that ProRes RAW records from.
     var isRawLike: Bool { !tenBitSubtypes.contains(subtype) && !eightBitSubtypes.contains(subtype) }
+    /// A sensor (Bayer) format, the kind ProRes RAW records from: "btp2" (96VersatileBayerPacked12) and
+    /// the plain Bayer types ("rgg4", "grb4", "gbr4", "bgg4"). Not the compressed YUV ones ("&8v0", "&xv0"…),
+    /// which isRawLike also counts.
+    var isBayer: Bool {
+        let c = fourCC(subtype)
+        return c.hasPrefix("bt") || ["rgg4", "grb4", "gbr4", "bgg4"].contains(c)
+    }
     var maxFps: Double { videoSupportedFrameRateRanges.map(\.maxFrameRate).max() ?? 0 }
     func supports(fps: Int) -> Bool {
         videoSupportedFrameRateRanges.contains { $0.minFrameRate <= Double(fps) + 0.01 && Double(fps) <= $0.maxFrameRate + 0.01 }
@@ -136,7 +143,15 @@ func pickFormat(_ device: AVCaptureDevice, res: Resolution, fps: Int, look: Look
         f.size.width == res.width && f.size.height == res.height && f.supports(fps: fps)
     }
     if codec.isRAW {
-        return fits.first { $0.isRawLike }
+        // The sensor formats don't always have the exact video size (the RAW frame is the sensor's
+        // own crop): the exact size first, else the nearest at this frame rate, larger before smaller.
+        let raw = device.formats.filter { $0.isBayer && $0.supports(fps: fps) }
+        if let exact = raw.first(where: { $0.size.width == res.width && $0.size.height == res.height }) { return exact }
+        return raw.sorted { a, b in
+            let da = abs(Int(a.size.width) - Int(res.width)), db = abs(Int(b.size.width) - Int(res.width))
+            if da != db { return da < db }
+            return a.size.width > b.size.width
+        }.first
     }
     let ok = fits.filter { f in
         !f.isRawLike && f.colorSpaceRaws.contains(look.colorSpaceRaw) && (!look.tenBit || f.isTenBit)
