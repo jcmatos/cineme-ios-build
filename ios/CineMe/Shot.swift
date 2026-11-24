@@ -25,3 +25,25 @@ enum Shot {
         scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { _ in }
     }
 }
+
+/// Screenshot runs only: a still room photo where the camera picture would be (the simulator has no
+/// camera), so the plates and keys show as they do over a real picture. The shots workflow adds the
+/// image (ShotBackdrop.jpg); normal builds don't have it, and then this draws nothing.
+struct ShotBackdrop: View {
+    private static let image: UIImage? = Shot.screen == nil ? nil :
+        Bundle.main.path(forResource: "ShotBackdrop", ofType: "jpg").flatMap { UIImage(contentsOfFile: $0) }
+
+    var body: some View {
+        GeometryReader { geo in
+            if let im = Self.image {
+                let landscape = geo.size.width > geo.size.height
+                let r: CGFloat = landscape ? 16.0 / 9.0 : 9.0 / 16.0
+                let w = min(geo.size.width, geo.size.height * r)
+                Image(uiImage: im).resizable().aspectRatio(contentMode: .fill)
+                    .frame(width: w, height: w / r).clipped()
+                    .position(x: geo.size.width / 2, y: geo.size.height / 2)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}

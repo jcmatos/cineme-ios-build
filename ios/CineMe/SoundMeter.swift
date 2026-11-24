@@ -233,7 +233,10 @@ struct MeterCorner: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             Color.clear.frame(width: 0, height: 0).onAppear { meter.attach(camera) }
-            if meter.on && !photo.on {
+            // Only while sound comes in (or to say the mic isn't allowed): with nothing to show, the
+            // corner stays as Android's, the histogram alone.
+            let micOff = [.denied, .restricted].contains(AVCaptureDevice.authorizationStatus(for: .audio))
+            if meter.on && !photo.on && (meter.reading.live || micOff) {
                 MeterBox(meter: meter, framed: !landscape)
                     .frame(width: s(landscape ? 160 : 124))
             }

@@ -37,6 +37,7 @@ struct ClipPlayer: View {
     var body: some View {
         GeometryReader { geo in
             let landscape = geo.size.width > geo.size.height
+            let ins = geo.safeAreaInsets
             ZStack {
                 picture
                 // Tap = pause / play, drag = scrub, anywhere off the keys.
@@ -48,10 +49,10 @@ struct ClipPlayer: View {
                 if let c = clip {
                     let m = store.mark(c.name)
                     if model.duration > 0 {
-                        timeStrip(m)
-                        markKeys(c, m, landscape: landscape)
+                        timeStrip(m, landscape: landscape, insets: ins)
+                        markKeys(c, m, landscape: landscape, insets: ins)
                     }
-                    if landscape { landscapeKeys(c, m) } else { portraitKeys(c, m) }
+                    if landscape { landscapeKeys(c, m, insets: ins) } else { portraitKeys(c, m) }
                 } else {
                     VStack(spacing: s(16)) {
                         Text("This clip is gone").font(s.font(15)).foregroundStyle(Color.dim)
@@ -61,11 +62,16 @@ struct ClipPlayer: View {
                 if confirm {
                     CineConfirmDialog("Delete this clip?", "It goes to the bin (kept 30 days). The curved arrow brings it back.",
                                       onYes: { confirm = false; delete() }, onNo: { confirm = false })
+                        // Centred on the whole screen, as Android's.
+                        .ignoresSafeArea()
                 }
                 if let msg = store.message {
+                    // PlayerActivity.kt:184-188: in the middle of the whole screen.
                     Text(msg).font(s.font(15)).foregroundStyle(Color.ivory)
                         .padding(.horizontal, s(20)).padding(.vertical, s(10))
                         .background(Capsule().fill(Color.toastBack))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .ignoresSafeArea()
                         .allowsHitTesting(false)
                 }
             }
@@ -96,16 +102,21 @@ struct ClipPlayer: View {
     // MARK: layout (PlayerActivity.kt:296-316)
 
     /// Landscape: all on top. Left: grid, sound, older, newer, bin, counter. Right: star, map, undo, help, X.
-    private func landscapeKeys(_ c: LibClip, _ m: ClipMark) -> some View {
+    /// Android: 16dp from the screen's edges; here from the screen's edges too (not the safe area),
+    /// clear of the rounded corners (libCorner).
+    private func landscapeKeys(_ c: LibClip, _ m: ClipMark, insets: EdgeInsets) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: s(10)) {
                 gridKey; soundKey; olderKey; newerKey; binKey(m); counter
                 Spacer(minLength: 0)
                 starKey(c, m); mapKey(c); undoKey; helpKey; closeKey
             }
-            .padding(s(16))
+            .padding(.top, s(16))
+            .padding(.leading, libCorner(insets.leading, dp: 16))
+            .padding(.trailing, libCorner(insets.trailing, dp: 16))
             Spacer(minLength: 0)
         }
+        .ignoresSafeArea()
     }
 
     /// Portrait: moving around on top, what to do with the clip at the bottom (70dp up).
@@ -125,6 +136,9 @@ struct ClipPlayer: View {
             .padding(.horizontal, s(14))
             .padding(.bottom, s(70))
         }
+        // The top row stays under the Dynamic Island's safe area; the bottom row is 70dp up from the
+        // screen's bottom edge, as Android (well above the home bar).
+        .ignoresSafeArea(edges: .bottom)
     }
 
     /// RoundButton (PlayerActivity.kt:330-336): 56dp Plate, 1dp Edge, 0.35 when disabled.
@@ -176,14 +190,14 @@ struct ClipPlayer: View {
     @ViewBuilder private var counter: some View {
         if !clips.isEmpty {
             Text("\(clips.count - (index ?? 0)) / \(clips.count)")
-                .font(s.font(14)).monospacedDigit().foregroundStyle(Color.dim)
+                .font(s.font(14)).foregroundStyle(Color.dim)
                 .padding(.horizontal, s(12)).padding(.vertical, s(5))
                 .background(Capsule().fill(Color.plate))
         }
     }
 
     /// In, Out and (when set) clear. Landscape: stacked at the right; portrait: a row 190dp up.
-    @ViewBuilder private func markKeys(_ c: LibClip, _ m: ClipMark, landscape: Bool) -> some View {
+    @ViewBuilder private func markKeys(_ c: LibClip, _ m: ClipMark, landscape: Bool, insets: EdgeInsets) -> some View {
         let keys = Group {
             MarkKey(on: m.inS >= 0, action: { setIn(c, m) }) {
                 CineIcon(.bracket(isIn: true), color: m.inS >= 0 ? Color.okGreen : Color.ivory)
@@ -201,31 +215,38 @@ struct ClipPlayer: View {
             }
         }
         if landscape {
+            // Android: 14dp from the screen's right edge, centred on its height; here just past the
+            // Dynamic Island (libEdge).
             HStack(spacing: 0) {
                 Spacer(minLength: 0)
-                VStack(spacing: s(14)) { keys }.padding(.trailing, s(14))
+                VStack(spacing: s(14)) { keys }.padding(.trailing, libEdge(insets.trailing, dp: 14))
             }
+            .frame(maxHeight: .infinity)
+            .ignoresSafeArea()
         } else {
             VStack(spacing: 0) {
                 Spacer(minLength: 0)
                 HStack(spacing: s(24)) { keys }.padding(.bottom, s(190))
             }
+            // 190dp up from the screen's bottom edge, as Android.
+            .ignoresSafeArea(edges: .bottom)
         }
     }
 
-    /// Time pill, in / out pill and the thin bar at the bottom (PlayerActivity.kt:508-536).
-    private func timeStrip(_ m: ClipMark) -> some View {
+    /// Time pill, in / out pill and the thin bar at the bottom (PlayerActivity.kt:508-536): from the
+    /// screen's edges as Android (24dp in, 18dp up); landscape clear of the rounded corners.
+    private func timeStrip(_ m: ClipMark, landscape: Bool, insets: EdgeInsets) -> some View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
             ZStack(alignment: .bottom) {
                 HStack(alignment: .bottom, spacing: 0) {
-                    Text(timeText).font(s.font(14)).monospacedDigit().foregroundStyle(Color.ivory)
+                    Text(timeText).font(s.font(14)).foregroundStyle(Color.ivory)
                         .padding(.horizontal, s(12)).padding(.vertical, s(4))
                         .background(Capsule().fill(Color.plate))
                     Spacer(minLength: 0)
                     if m.inS >= 0 {
                         Text("\(clipClock(m.inS)) – \(m.outS > m.inS ? clipClock(m.outS) : "…")")
-                            .font(s.font(14)).monospacedDigit().foregroundStyle(Color.okGreen)
+                            .font(s.font(14)).foregroundStyle(Color.okGreen)
                             .padding(.horizontal, s(10)).padding(.vertical, s(4))
                             .background(Capsule().fill(Color.plate))
                     }
@@ -233,9 +254,12 @@ struct ClipPlayer: View {
                 .padding(.bottom, s(10))
                 PlayerBar(position: model.position, duration: model.duration, mark: m)
             }
-            .padding(.horizontal, s(24))
+            .padding(.leading, landscape ? libCorner(insets.leading, dp: 24) : s(24))
+            .padding(.trailing, landscape ? libCorner(insets.trailing, dp: 24) : s(24))
             .padding(.vertical, s(18))
         }
+        // From the screen's bottom edge (18dp up) as Android; the bar stays just above the home bar.
+        .ignoresSafeArea(edges: landscape ? .all : .bottom)
         .allowsHitTesting(false)
     }
 

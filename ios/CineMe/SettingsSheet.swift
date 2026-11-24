@@ -10,6 +10,8 @@ import UniformTypeIdentifiers
 /// The settings pages, in the nav's order (Android's order, with the iPhone's own pages in between).
 enum SettingsPage: String, CaseIterable, Identifiable {
     case video = "Video"
+    /// Android's second page (Sharpening, Stabilization): here Stabilization.
+    case image = "Image"
     case auto = "Auto"
     case photo = "Photo"
     case saveTo = "Save to"
@@ -186,6 +188,7 @@ struct SettingsPanel: View {
     private var pageContent: some View {
         switch current {
         case .video: VideoPage(camera: camera)
+        case .image: ImagePage(camera: camera)
         case .auto: AutoPage(camera: camera)
         case .photo: PhotoSettingsSection(camera: camera)
         case .saveTo: SaveToPage(camera: camera)
@@ -235,17 +238,44 @@ struct PaneNavItem: View {
 
 /// How far a view reaches into the window's safe area (Dynamic Island, home indicator), from its
 /// global frame. Zero when the caller already keeps it inside the safe area.
+/// Android draws from the screen edge; like the camera screen (CameraScreen.swift `side` / `grow`),
+/// the panels use only part of the margins: 55% of the landscape side insets (still clear of the
+/// Dynamic Island) and half of the home indicator's. The status bar / island on top stays whole.
 enum PaneSafeArea {
+    static let sideShare: CGFloat = 0.55
+    static let bottomShare: CGFloat = 0.5
+
     @MainActor
     static func overlap(_ frame: CGRect) -> EdgeInsets {
         let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap { $0.windows }
         guard let w = windows.first(where: { $0.isKeyWindow }) ?? windows.first else { return EdgeInsets() }
         let i = w.safeAreaInsets
         let b = w.bounds
+        let left = i.left * sideShare
+        let right = i.right * sideShare
+        let bottom = i.bottom * bottomShare
         return EdgeInsets(top: max(0, i.top - frame.minY),
-                          leading: max(0, i.left - frame.minX),
-                          bottom: max(0, frame.maxY - (b.height - i.bottom)),
-                          trailing: max(0, frame.maxX - (b.width - i.right)))
+                          leading: max(0, left - frame.minX),
+                          bottom: max(0, frame.maxY - (b.height - bottom)),
+                          trailing: max(0, frame.maxX - (b.width - right)))
+    }
+}
+
+/// Arrow glyphs (▲ ▼ ◀ ▶ ●) at Android's size. Jost has none; iOS's fallback draws them about 1.5x as
+/// big as Android's does, so they are set at 0.66 of the text size (remote rows RemoteSettings.kt:116,
+/// the gimbal sheet's Pan / Tilt keys CameraScreen.kt:2302).
+struct PaneArrow: View {
+    @Environment(\.cineScale) private var s
+    let glyph: String
+    var sp: CGFloat = 15
+
+    init(_ glyph: String, sp: CGFloat = 15) {
+        self.glyph = glyph
+        self.sp = sp
+    }
+
+    var body: some View {
+        Text(glyph).font(s.font(sp * 0.66))
     }
 }
 
@@ -317,7 +347,6 @@ private struct VideoPage: View {
         if !camera.codec.isRAW {
             PaneOpt("Colour", Look.allCases.filter { camera.codec.allows($0) }, camera.look, title: { $0.rawValue }) { camera.look = $0 }
         }
-        PaneOpt("Stabilization", [true, false], camera.stabilization, title: { $0 ? "Cinematic" : "Off" }) { camera.stabilization = $0 }
         PaneRecordSignal()
         CineNote(note)
     }
@@ -332,27 +361,23 @@ private struct VideoPage: View {
     }
 }
 
+/// Settings > Image (Android Group("Image") :1868, Stabilization row; the iPhone has no sharpening switch).
+private struct ImagePage: View {
+    @ObservedObject var camera: Camera
+
+    var body: some View {
+        PaneOpt("Stabilization", [true, false], camera.stabilization, title: { $0 ? "Cinematic" : "Off" }) { camera.stabilization = $0 }
+    }
+}
+
 /// Record signal (Beeper.swift's setting, as an Android Opt row): a sample on every change.
 private struct PaneRecordSignal: View {
-    @State private var signal = Beeper.shared.signal
-    var body: some View {
-        PaneOpt("Record signal", Beeper.Signal.allCases, signal, title: { $0.rawValue }) { v in
-            signal = v
-            Beeper.shared.signal = v
-            Beeper.shared.start()   // a sample
-        }
-    }
+    var body: some View { RecordSignalPicker() }
 }
 
 /// The place in clips and photos (Locator.swift's setting, as an On / Off row). On asks for permission.
 private struct PanePlaceRow: View {
-    @AppStorage(Locator.key) private var on = true
-    var body: some View {
-        PaneOnOff("Place (GPS) in clips and photos", isOn: $on)
-            .onChange(of: on) { _, v in
-                if v { Locator.shared.start() } else { Locator.shared.stop() }
-            }
-    }
+    var body: some View { LocationToggle() }
 }
 
 /// Settings > Auto: where Auto aims (Android's AutoBias slider).
@@ -650,8 +675,9 @@ struct PaneSliderRow: View {
             HStack(spacing: 0) {
                 Text(low).font(s.font(12)).foregroundStyle(Color.faint).lineLimit(1)
                     .frame(minWidth: s(56), alignment: .trailing)
+                // Material's Slider is 48dp tall (minimum touch size), its thumb 44.
                 PaneSlider(value: $value, range: range, enabled: enabled)
-                    .frame(width: s(118), height: s(44))
+                    .frame(width: s(118), height: s(48))
                     .padding(.horizontal, s(6))
                 Text(high).font(s.font(12)).foregroundStyle(Color.faint).lineLimit(1)
                 Text(shown ?? "\(value)").font(s.font(15)).foregroundStyle(Color.ivory).lineLimit(1)
@@ -706,8 +732,8 @@ struct PaneSlider: View {
                     }
                 }
                 Capsule().fill(Color.ivory)
-                    .frame(width: tw, height: h)
-                    .offset(x: x - tw / 2)
+                    .frame(width: tw, height: min(h, s(44)))
+                    .offset(x: x - tw / 2, y: max(0, h - s(44)) / 2)
             }
             .frame(width: w, height: h, alignment: .topLeading)
             .contentShape(Rectangle())

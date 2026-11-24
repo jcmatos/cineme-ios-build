@@ -466,6 +466,9 @@ struct GimbalPanel: View {
                 .padding(safe)
             }
         }
+        // Full screen like Android (margins from the screen edge, not from the safe area): the
+        // reader takes the whole screen and keeps clear of the island only by PaneSafeArea's share.
+        .ignoresSafeArea()
         .background(Color.sheet.ignoresSafeArea().onTapGesture {})
         .cineScale(.cam)
         .cineDefaultText(.cam)
@@ -504,11 +507,20 @@ struct GimbalPanel: View {
                     keyPill("W", .sliderW)
                     keyPill("T", .sliderT)
                 }
+                // Joystick test (Android :2301): "◀ Pan", "Pan ▶", "Tilt ▲", "Tilt ▼", arrows at Android's size.
                 FlowRow(spacing: s(6), lineSpacing: s(6)) {
-                    CinePill("◄ Pan") { gimbal.nudge(pan: -0.3, tilt: 0) }
-                    CinePill("Pan ►") { gimbal.nudge(pan: 0.3, tilt: 0) }
-                    CinePill("Tilt ▲") { gimbal.nudge(pan: 0, tilt: 0.3) }
-                    CinePill("Tilt ▼") { gimbal.nudge(pan: 0, tilt: -0.3) }
+                    CinePill(action: { gimbal.nudge(pan: -0.3, tilt: 0) }) {
+                        HStack(spacing: s(7)) { PaneArrow("◀\u{FE0E}"); Text("Pan") }
+                    }
+                    CinePill(action: { gimbal.nudge(pan: 0.3, tilt: 0) }) {
+                        HStack(spacing: s(7)) { Text("Pan"); PaneArrow("▶\u{FE0E}") }
+                    }
+                    CinePill(action: { gimbal.nudge(pan: 0, tilt: 0.3) }) {
+                        HStack(spacing: s(7)) { Text("Tilt"); PaneArrow("▲") }
+                    }
+                    CinePill(action: { gimbal.nudge(pan: 0, tilt: -0.3) }) {
+                        HStack(spacing: s(7)) { Text("Tilt"); PaneArrow("▼") }
+                    }
                 }
             }
             .padding(.top, s(6))

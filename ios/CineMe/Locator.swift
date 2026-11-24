@@ -119,11 +119,12 @@ final class Locator: NSObject, CLLocationManagerDelegate {
     }
 }
 
-/// Settings row: the place in clips and photos. Turning it on asks for permission.
+/// Settings row: the place in clips and photos (Android Opt "Location in clips and photos",
+/// CameraScreen.kt:1899, On / Off). Turning it on asks for permission.
 struct LocationToggle: View {
     @AppStorage(Locator.key) private var on = true
     var body: some View {
-        Toggle("Place (GPS) in clips and photos", isOn: $on)
+        PaneOnOff("Place (GPS) in clips and photos", isOn: $on)
             .onChange(of: on) { _, v in
                 if v { Locator.shared.start() } else { Locator.shared.stop() }
             }

@@ -961,7 +961,7 @@ struct BackupView: View {
             FlowRow(spacing: s(6), lineSpacing: s(6)) {
                 CinePill("Sync now") { backup.askPhotos(); backup.syncNow() }
                 if !backup.marked.isEmpty {
-                    CinePill("Marked to delete: \(backup.marked.count)") { showMarked = true }
+                    CinePill("Marked to delete: \(backup.marked.count)") { openMarked() }
                 }
             }
             .padding(.top, s(6))
@@ -972,9 +972,24 @@ struct BackupView: View {
         .onChange(of: auto) { _, on in if on { backup.askPhotos() }; backup.schedule() }
         .onChange(of: phoneCamera) { _, _ in backup.askPhotos() }
         .onChange(of: mobile) { _, _ in backup.schedule() }
-        .sheet(isPresented: $showMarked) {
-            NavigationStack { MarkedView(onClose: { showMarked = false }) }
+        // Android draws the marked dialog over the screen (scrim + panel): a cover with no slide and
+        // a clear background, so the panel shows over the settings and the picture.
+        .fullScreenCover(isPresented: $showMarked) {
+            MarkedView(onClose: { closeMarked() })
+                .presentationBackground(.clear)
         }
+    }
+
+    private func openMarked() {
+        var t = Transaction()
+        t.disablesAnimations = true
+        withTransaction(t) { showMarked = true }
+    }
+
+    private func closeMarked() {
+        var t = Transaction()
+        t.disablesAnimations = true
+        withTransaction(t) { showMarked = false }
     }
 }
 
@@ -986,7 +1001,11 @@ struct BackupSheet: View {
 }
 
 /// The items marked for deletion on the site that are still on the phone: a frame and the name of
-/// each, "Delete all" and then a second Yes.
+/// each, "Delete all" and then a second Yes. Android MarkedDialog (CameraScreen.kt:1613): scrim, a
+/// panel 80% of the width (at most 85% of the height), r24 Sheet with an Edge border, padding 28x22;
+/// title 22sp w500, Dim 14sp line, rows 8dp apart (112x63 frame r8, name 15sp, kind Dim 13sp),
+/// "Delete all N" Red capsule 56dp 20sp w600 and a Later pill, 16dp apart; the second Yes is the
+/// ConfirmDialog. Camera scale (x0.8). Put it over the screen (overlay / clear full-screen cover).
 struct MarkedView: View {
     var onClose: (() -> Void)? = nil
     @ObservedObject var backup = Backup.shared
@@ -994,47 +1013,71 @@ struct MarkedView: View {
     @State private var items: [LocalItem] = []
     @State private var sure = false
     @State private var working = false
+    private let s = CineScale.cam
 
     var body: some View {
+        GeometryReader { g in
+            CineScrim {
+                panel
+                    .frame(width: g.size.width * 0.8, alignment: .leading)
+                    .frame(maxHeight: g.size.height * 0.85)
+                    .plate(cineRect(s(24)), fill: Color.sheet, border: Color.edge)
+            }
+        }
+        .overlay {
+            if sure {
+                CineConfirmDialog("Delete \(items.count) from the phone?",
+                                  "CineMe's files go to its bin (30 days). For the ones in Photos, iOS asks once more.",
+                                  onYes: { sure = false; deleteAll() },
+                                  onNo: { sure = false })
+            }
+        }
+        .cineScale(.cam)
+        .cineDefaultText(.cam)
+        .task { items = await backup.markedOnPhone() }
+    }
+
+    private var panel: some View {
         VStack(alignment: .leading, spacing: 0) {
+            Text("Marked to delete on the site: \(items.count)").font(s.font(22, .medium)).foregroundStyle(Color.ivory)
             Text("Still on the phone. Nothing is deleted until you say yes twice.")
-                .font(.system(size: 14)).foregroundStyle(Color.dim)
-                .padding(.horizontal, 20).padding(.top, 8)
-            List(items) { item in
-                HStack(spacing: 14) {
+                .font(s.font(14)).foregroundStyle(Color.dim)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer().frame(height: s(12))
+            // Android LazyColumn weight(1f, fill = false): as tall as the rows, scrolling when they don't fit.
+            ViewThatFits(in: .vertical) {
+                rows
+                ScrollView(.vertical) { rows }.scrollIndicators(.hidden)
+            }
+            Spacer().frame(height: s(14))
+            HStack(spacing: s(16)) {
+                Button { sure = true } label: {
+                    Text("Delete all \(items.count)").font(s.font(20, .semibold)).foregroundStyle(Color.white)
+                        .padding(.horizontal, s(28)).frame(height: s(56))
+                        .background(Capsule().fill(Color.rec))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(CinePressStyle())
+                .disabled(items.isEmpty || working)
+                CinePill("Later") { close() }
+            }
+        }
+        .padding(.horizontal, s(28)).padding(.vertical, s(22))
+    }
+
+    private var rows: some View {
+        VStack(alignment: .leading, spacing: s(8)) {
+            ForEach(items) { item in
+                HStack(spacing: s(14)) {
                     MarkedThumb(item: item)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(item.name).font(.system(size: 15)).foregroundStyle(Color.ivory)
-                        Text(kind(item)).font(.system(size: 13)).foregroundStyle(Color.dim)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(item.name).font(s.font(15)).foregroundStyle(Color.ivory)
+                        Text(kind(item)).font(s.font(13)).foregroundStyle(Color.dim)
                     }
                 }
-                .listRowBackground(Color.clear)
             }
-            .listStyle(.plain)
-            HStack(spacing: 16) {
-                Button { sure = true } label: {
-                    Text("Delete all \(items.count)").font(.system(size: 20, weight: .semibold)).foregroundStyle(.white)
-                        .padding(.horizontal, 28).frame(height: 56)
-                        .background(Capsule().fill(Color.rec))
-                }
-                .disabled(items.isEmpty || working)
-                Button { close() } label: {
-                    Text("Later").font(.system(size: 17)).foregroundStyle(Color.ivory)
-                        .padding(.horizontal, 22).frame(height: 48)
-                        .background(Capsule().fill(Color.plate))
-                }
-            }
-            .padding(20)
         }
-        .background(Color(white: 0.07).ignoresSafeArea())
-        .navigationTitle("Marked to delete: \(items.count)")
-        .alert("Delete \(items.count) from the phone?", isPresented: $sure) {
-            Button("Yes", role: .destructive) { deleteAll() }
-            Button("No", role: .cancel) {}
-        } message: {
-            Text("CineMe's files go to its bin (30 days). For the ones in Photos, iOS asks once more.")
-        }
-        .task { items = await backup.markedOnPhone() }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func kind(_ i: LocalItem) -> String {
@@ -1057,17 +1100,19 @@ struct MarkedView: View {
     }
 }
 
+/// Android :1653: 112x63dp, r8, Drum until the frame is there.
 private struct MarkedThumb: View {
+    @Environment(\.cineScale) private var s
     let item: LocalItem
     @State private var img: UIImage? = nil
     var body: some View {
         ZStack {
+            Color.drum
             if let h = item.hue { LibFakeFrame(hue: h) }
             else if let i = img { Image(uiImage: i).resizable().scaledToFill() }
-            else { Color(white: 0.15) }
         }
-        .frame(width: 112, height: 63)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .frame(width: s(112), height: s(63))
+        .clipShape(cineRect(s(8)))
         .task { if item.hue == nil { img = await Backup.shared.preview(item) } }
     }
 }
@@ -1082,8 +1127,14 @@ struct MarkedPrompt: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .sheet(isPresented: $show, onDismiss: { laterFor = backup.marked }) {
-                NavigationStack { MarkedView(onClose: { show = false }) }
+            // Over the camera screen like Android's MarkedDialog (scrim + panel), not in a sheet.
+            .overlay {
+                if show {
+                    MarkedView(onClose: {
+                        show = false
+                        laterFor = backup.marked
+                    })
+                }
             }
             .onChange(of: backup.marked) { _, _ in check() }
             .onChange(of: recording) { _, _ in check() }

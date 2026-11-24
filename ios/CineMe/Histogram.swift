@@ -55,11 +55,14 @@ struct HistogramBox: View {
             p.addLine(to: CGPoint(x: size.width, y: size.height))
             p.closeSubpath()
             ctx.fill(p, with: .color(Color.ivory.opacity(0.85)))
+            // Android :861-862: a 4px line centred 2px in from the edge, i.e. flush with it, 1.9dp
+            // wide at the camera screen's 2.1 px/dp.
+            let edge = Theme.cam(1.9)
             if h.clipped > 0.01 {
-                ctx.fill(Path(CGRect(x: size.width - 3, y: 0, width: 2, height: size.height)), with: .color(Color.rec))
+                ctx.fill(Path(CGRect(x: size.width - edge, y: 0, width: edge, height: size.height)), with: .color(Color.rec))
             }
             if let first = h.bins.first, first > 0.5 {
-                ctx.fill(Path(CGRect(x: 1, y: 0, width: 2, height: size.height)), with: .color(Color.brass))
+                ctx.fill(Path(CGRect(x: 0, y: 0, width: edge, height: size.height)), with: .color(Color.brass))
             }
         case .waveform:
             wave(h.luma, Color.ivory, 0, size.width, &ctx, size)

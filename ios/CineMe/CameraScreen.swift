@@ -39,17 +39,19 @@ struct CameraScreen: View {
             let landscape = geo.size.width > geo.size.height
             let ins = geo.safeAreaInsets
             let full = CGSize(width: geo.size.width + ins.leading + ins.trailing, height: geo.size.height + ins.top + ins.bottom)
-            // Android draws from the screen edge. Here the keys keep clear of the rounded corners, the
-            // Dynamic Island and the home bar, but use part of the safe area's margin (it is wide in landscape).
-            let side = landscape ? max(ins.leading, ins.trailing) * 0.55 : 0
-            let grow = EdgeInsets(top: 0, leading: -(ins.leading - side), bottom: -(ins.bottom * 0.5), trailing: -(ins.trailing - side))
+            // Android lays the keys out from the screen edges: so does this layer (it covers the whole
+            // screen), moved in only where the Dynamic Island or the rounded corners would cut a key.
+            let e = CamEdges(landscape: landscape, insets: ins)
             ZStack {
                 Color.black.ignoresSafeArea()
                 picture.ignoresSafeArea()
-                controls(landscape: landscape, width: full.width - 2 * side)
+                controls(landscape: landscape, width: full.width - 2 * e.corner, e: e)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(grow)
+                    .ignoresSafeArea()
+                // Android: in the middle of the whole screen.
                 CamMessages(camera: camera)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .ignoresSafeArea()
                 AidsHook(camera: camera)
                 overlays(landscape: landscape, full: full)
             }
@@ -82,6 +84,7 @@ struct CameraScreen: View {
     private var picture: some View {
         ZStack {
             PreviewView(camera: camera)
+            ShotBackdrop()            // screenshot runs only (Shot.swift)
             ExposureLayer(aids: aids, maps: .shared)
             PeakingLayer(aids: aids, camera: camera)
             AnamorphicShotPattern()   // screenshot run "anamorphic" only (Anamorphic.swift)
@@ -94,34 +97,36 @@ struct CameraScreen: View {
 
     // MARK: - the keys
 
+    /// The keys, placed as CameraScreen.kt:260-346 places them: Android dp from the screen edges, plus
+    /// `e` (CamEdges) where this iPhone's Dynamic Island, corners or home bar need room.
     @ViewBuilder
-    private func controls(landscape: Bool, width: CGFloat) -> some View {
+    private func controls(landscape: Bool, width: CGFloat, e: CamEdges) -> some View {
         ZStack {
-            // Top left: histogram (tap: parade, waveform), sound meters under it.
+            // Top left: histogram (tap: parade, waveform), sound meters under it (:262-263).
             VStack(alignment: .leading, spacing: s(6)) {
                 HistogramCorner(aids: aids, landscape: landscape)
                 MeterCorner(meter: .shared, aids: aids, photo: camera.photo, camera: camera, landscape: landscape)
             }
-            .padding(.leading, s(landscape ? 16 : 12))
-            .padding(.top, s(landscape ? 16 : 46))
+            .padding(.leading, s(landscape ? 16 : 12) + e.corner)
+            .padding(.top, s(landscape ? 16 : 46) + e.top)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
-            // Top centre: format, badges, storage, battery.
+            // Top centre: format, badges, storage, battery (:269).
             CamStatusPill(camera: camera)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { statusHeight = $0 }
-                .padding(.top, s(12))
+                .padding(.top, s(12) + e.top)
                 .padding(.horizontal, landscape ? s(260) : s(12))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
-            // Top right: level, moves, time-lapse, record signal, gimbal (portrait: under the status).
+            // Top right: level, moves, time-lapse, record signal, gimbal (portrait: under the status) (:272).
             CamTopRight(camera: camera, gimbal: gimbal, mover: rig.mover, backup: Backup.shared, level: rig.level,
                         statusHeight: statusHeight,
                         onClearMove: { clearMove = true },
                         onMoves: { movesOpen = true },
                         onTimelapse: timelapseTapped,
                         onGimbal: { gimbalPanel = true })
-                .padding(.top, s(landscape ? 10 : 48))
-                .padding(.trailing, s(10))
+                .padding(.top, s(landscape ? 10 : 48) + e.top)
+                .padding(.trailing, s(10) + e.corner)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
 
             // Under the status: time-lapse running, arms trigger, zebras / false colour key.
@@ -130,42 +135,46 @@ struct CameraScreen: View {
                 ArmsBanner(tracker: rig.tracker)
                 ExposureBanner(aids: aids, maps: .shared)
             }
-            .padding(.top, s(landscape ? 50 : 100))
+            .padding(.top, s(landscape ? 50 : 100) + e.top)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
-            // Left: the drums (or the focus ring).
+            // Left: the drums (or the focus ring). Landscape bottom left 16 / 14 (:334), clear of the
+            // Dynamic Island; portrait centre left 12 (:327), centred on the whole screen as Android.
             wheels(landscape: landscape)
-                .padding(.leading, s(landscape ? 16 : 12))
-                .padding(.bottom, landscape ? s(14) : 0)
+                .padding(.leading, landscape ? max(s(16) + e.corner, e.island) : s(12))
+                .padding(.bottom, landscape ? s(14) + e.bottom : 0)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: landscape ? .bottomLeading : .leading)
 
             if landscape {
+                // :336 bar bottom 14; :335 record column centre right, end 18 (clear of the island).
                 bar(sliderWidth: min(380, width / Theme.camScale - 330), landscape: true)
-                    .padding(.bottom, s(14))
+                    .padding(.bottom, s(14) + e.bottom)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 record(portrait: false)
-                    .padding(.trailing, s(18))
+                    .padding(.trailing, max(s(18) + e.corner, e.island))
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
             } else {
+                // :328-332 bar, 12, record row, bottom 16; :346 Track bottom left 12 / 16.
                 VStack(spacing: s(12)) {
                     bar(sliderWidth: min(380, width / Theme.camScale - 270), landscape: false)
                     record(portrait: true)
                 }
-                .padding(.bottom, s(16))
+                .padding(.bottom, s(16) + e.bottom)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 CamTrackKey(tracker: rig.tracker, wide: false)
-                    .padding(.leading, s(12)).padding(.bottom, s(16))
+                    .padding(.leading, s(12) + e.corner).padding(.bottom, s(16) + e.bottom)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             }
 
-            // Bottom right: Track (landscape) and the gear.
+            // Bottom right: Track (landscape) and the gear, 16 from the corner (:339).
             HStack(spacing: s(10)) {
                 if landscape { CamTrackKey(tracker: rig.tracker, wide: true) }
                 CineRoundKey(enabled: !camera.recording, action: { settings.toggle() }) {
                     CineIcon(.gear, color: camera.recording ? Color.faint : Color.ivory)
                 }
             }
-            .padding(s(16))
+            .padding(.trailing, s(16) + e.corner)
+            .padding(.bottom, s(16) + e.bottom)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
         }
     }
@@ -273,6 +282,8 @@ struct CameraScreen: View {
         camera.autoExposure = false
         camera.iso = 80
         camera.shutter = 30
+        // The level pill with a reading, as in Android's 01-camera-idle.png (no motion in the simulator).
+        rig.level.fakeForShots(0.4)
     }
 
     private func openShot() {
@@ -295,7 +306,8 @@ struct CameraScreen: View {
         // Picture aids and focus (fake frames).
         case "guides":
             UserDefaults.standard.set(true, forKey: "showGrid")
-            UserDefaults.standard.set(SpiralCorner.bottomLeft.rawValue, forKey: "spiral")
+            // As the Android reference (25-peaking-grid-spiral.png): wide arc from the top left.
+            UserDefaults.standard.set(SpiralCorner.topLeft.rawValue, forKey: "spiral")
         case "histogram": aids.fakeForShots("histogram", landscape: Shot.orientation != "portrait")
         case "peaking": aids.fakeForShots("peaking", landscape: Shot.orientation != "portrait")
         case "zebras", "falsecolour": ExposureMaps.shared.fakeForShots(Shot.screen ?? "", landscape: Shot.orientation != "portrait")
@@ -328,6 +340,34 @@ struct CameraScreen: View {
         case "help": return .help
         case "sound": return .sound
         default: return nil
+        }
+    }
+}
+
+/// Room this iPhone needs round the camera keys, in points. Android places them from the screen
+/// edges (CameraScreen.kt:260-346, dp through `s(...)`); the keys' layer here covers the whole screen
+/// too, and these are added only where the Dynamic Island, the rounded corners or the home bar would
+/// cut a key.
+struct CamEdges {
+    /// Added at the top. Portrait: the status pill starts just under the Dynamic Island.
+    var top: CGFloat = 0
+    /// Added at the bottom: a little room over the home bar.
+    var bottom: CGFloat = 0
+    /// Added at the side of the corner items (histogram, top-right row, gear, Track). Landscape: clear
+    /// of the rounded corners.
+    var corner: CGFloat = 0
+    /// Landscape: the least distance from the side for the items in the middle band (drums, record
+    /// column), where the Dynamic Island is (left or right, by how the phone is turned).
+    var island: CGFloat = 0
+
+    init(landscape: Bool, insets ins: EdgeInsets) {
+        bottom = min(ins.bottom, 4)
+        if landscape {
+            let side = max(ins.leading, ins.trailing)
+            corner = side > 0 ? 10 : 0
+            island = max(0, side - 14)   // the island ends ~14pt inside the inset (62 -> 48)
+        } else {
+            top = max(0, ins.top - 14)
         }
     }
 }

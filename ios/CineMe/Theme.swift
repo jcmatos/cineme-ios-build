@@ -731,6 +731,9 @@ struct CineScrim<Content: View>: View {
                 .onTapGesture { onTapOutside?() }
             content()
         }
+        // Android centres its dialogs on the whole screen, not inside the Dynamic Island's safe area.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea()
     }
 }
 

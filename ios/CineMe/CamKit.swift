@@ -432,8 +432,8 @@ struct CamWheels: View {
         // In auto the drums follow the camera's own values.
         TimelineView(.periodic(from: .now, by: camera.autoExposure ? 0.5 : 3600)) { _ in
             if portrait {
+                // No mic key in portrait: Android has it in landscape only (CameraScreen.kt:1169).
                 VStack(alignment: .leading, spacing: 0) {
-                    micKey.padding(.bottom, s(8))
                     VStack(spacing: 0) {
                         iso
                         Spacer().frame(height: s(6))

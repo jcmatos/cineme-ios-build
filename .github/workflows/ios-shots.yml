@@ -27,6 +27,8 @@ jobs:
 
       - name: Build for the simulator
         run: |
+          # The build repo has a still room photo to show where the camera picture would be (Shot.swift).
+          cp ../shots/ShotBackdrop.jpg CineMe/ 2>/dev/null || true
           brew install xcodegen
           xcodegen generate
           set -o pipefail
@@ -50,7 +52,7 @@ jobs:
           xcrun simctl install "$DEV" build/Build/Products/Debug-iphonesimulator/CineMe.app
           xcrun simctl privacy "$DEV" grant all ca.channel13.cineme || true
           mkdir -p shots
-          for s in camera:landscape camera:portrait settings:landscape library:landscape library:portrait player:landscape level:landscape moves:landscape timelapse:landscape tracking:landscape remote:landscape note:landscape guides:landscape histogram:landscape peaking:landscape focusring:landscape help:landscape photo:landscape photo:portrait backup:landscape zebras:landscape falsecolour:landscape falsecolour:portrait meters:landscape meters:portrait sound:landscape timecode:landscape anamorphic:landscape anamorphic:portrait fonttest:landscape wb:landscape wb:portrait focus:landscape measuring:landscape notrecorded:landscape movearmed:landscape gimbal:landscape settings:portrait set-auto:landscape set-photo:landscape set-screen:landscape set-focus:landscape set-tracking:landscape set-gimbal:landscape set-exposure:landscape; do
+          for s in camera:landscape camera:portrait settings:landscape library:landscape library:portrait player:landscape level:landscape moves:landscape timelapse:landscape tracking:landscape remote:landscape note:landscape guides:landscape histogram:landscape peaking:landscape focusring:landscape help:landscape photo:landscape photo:portrait backup:landscape zebras:landscape falsecolour:landscape falsecolour:portrait meters:landscape meters:portrait sound:landscape timecode:landscape anamorphic:landscape anamorphic:portrait fonttest:landscape wb:landscape wb:portrait focus:landscape measuring:landscape notrecorded:landscape movearmed:landscape gimbal:landscape settings:portrait set-image:landscape set-auto:landscape set-photo:landscape set-screen:landscape set-focus:landscape set-tracking:landscape set-gimbal:landscape set-exposure:landscape; do
             screen=${s%%:*}; orient=${s##*:}
             xcrun simctl terminate "$DEV" ca.channel13.cineme 2>/dev/null || true
             xcrun simctl launch "$DEV" ca.channel13.cineme -shot "$screen" -orient "$orient"

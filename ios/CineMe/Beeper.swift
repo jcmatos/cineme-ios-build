@@ -126,15 +126,14 @@ enum RecordAudio {
     }
 }
 
-/// Settings row: what recording start / stop sounds like.
+/// Settings row: what recording start / stop sounds like (Android Opt "Record signal",
+/// CameraScreen.kt:1862). A sample on every change.
 struct RecordSignalPicker: View {
     @State private var signal = Beeper.shared.signal
     var body: some View {
-        Picker("Record signal", selection: $signal) {
-            ForEach(Beeper.Signal.allCases) { Text($0.rawValue).tag($0) }
-        }
-        .onChange(of: signal) { _, s in
-            Beeper.shared.signal = s
+        PaneOpt("Record signal", Beeper.Signal.allCases, signal, title: { $0.rawValue }) { v in
+            signal = v
+            Beeper.shared.signal = v
             Beeper.shared.start()   // a sample
         }
     }

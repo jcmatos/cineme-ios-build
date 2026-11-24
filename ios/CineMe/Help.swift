@@ -18,9 +18,12 @@ struct HelpPanel: View {
     }
 
     var body: some View {
+        // Full screen like Android (36dp margins from the screen edge): the reader takes the whole
+        // screen and keeps clear of the Dynamic Island / home bar only by PaneSafeArea's share.
         GeometryReader { g in
             content.padding(PaneSafeArea.overlap(g.frame(in: .global)))
         }
+        .ignoresSafeArea()
         .background(Color.sheet.ignoresSafeArea().onTapGesture {})
         .cineScale(.cam)
         .cineDefaultText(.cam)
@@ -191,7 +194,7 @@ let helpSections: [(String, [String])] = [
     ]),
     ("SETTINGS", [
         "The gear (bottom right): settings over the left of the picture (the bottom in portrait). A page per subject in the column on the left; tap the picture or Close to go back.",
-        "Video: resolution, frame rate, codec (HEVC, H.264, ProRes, ProRes RAW), colour (SDR, HDR Dolby Vision, Apple Log 2, Apple Log), stabilization, record signal.",
+        "Video: resolution, frame rate, codec (HEVC, H.264, ProRes, ProRes RAW), colour (SDR, HDR Dolby Vision, Apple Log 2, Apple Log), record signal. Image: stabilization.",
         "Auto: where Auto aims, in steps of 0.2 stop. Photo: RAW, HEIC or JPEG, slowest shutter for Auto.",
         "Save to: this iPhone or a folder on a USB-C drive (ProRes 4K 120 fps needs the drive), Copy to Photos, Place, the take log.",
         "Screen: Vibrate on taps (with its strength), histogram, grid, golden spiral. Exposure: zebras and false colour. Focus: peaking and sharp areas.",

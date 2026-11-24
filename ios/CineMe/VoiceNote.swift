@@ -116,7 +116,7 @@ struct VoiceNoteView: View {
                         TimelineView(.periodic(from: started, by: 0.5)) { t in
                             let sec = max(0, Int(t.date.timeIntervalSince(started)))
                             Text(String(format: "%02d:%02d", sec / 60, sec % 60))
-                                .font(s.font(30, .medium)).monospacedDigit()
+                                .font(s.font(30, .medium))
                         }
                         Spacer().frame(height: s(16))
                     }
@@ -147,6 +147,8 @@ struct VoiceNoteView: View {
                 }, onNo: { reject = false })
             }
         }
+        // Centred on the whole screen (Android's dialog box is full screen), not the safe area.
+        .ignoresSafeArea()
         .onAppear { refresh() }
         .onDisappear { if note.recording { _ = note.stop() } }
         // The record button (gimbal, remote) started a clip: the clip gets the mic, the note is kept.

@@ -207,6 +207,8 @@ struct TimelapseDialog: View {
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
+        // The panel centred on the whole screen, as Android's (Timelapse.kt:84), not the safe area.
+        .ignoresSafeArea()
         .cineScale(.cam)
     }
 

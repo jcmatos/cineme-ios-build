@@ -817,6 +817,8 @@ struct MovesDialog: View {
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
+        // The panel centred on the whole screen, as Android's (RollDialog.kt:116), not the safe area.
+        .ignoresSafeArea()
         .cineScale(.cam)
         // Pan has no single angle (it counts from where the camera looks): MOVE only.
         .onChange(of: axis) { _, a in if a == .pan { move = true } }

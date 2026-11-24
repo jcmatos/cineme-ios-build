@@ -369,7 +369,7 @@ struct LibraryView: View {
                 if shown.isEmpty {
                     Text(starredOnly ? "No starred clips" : "No clips yet").font(s.font(15)).foregroundStyle(Color.dim)
                 }
-                if landscape { sideKeys(shown) } else { barKeys(shown) }
+                if landscape { sideKeys(shown, insets: geo.safeAreaInsets) } else { barKeys(shown) }
                 if sorting { sortPopup }
                 if open == nil { toast(landscape) }
                 if let name = open {
@@ -386,6 +386,8 @@ struct LibraryView: View {
                     CineConfirmDialog("Empty the bin?", binText,
                                       onYes: { store.emptyBin(); emptying = false },
                                       onNo: { emptying = false })
+                        // Centred on the whole screen, as Android's.
+                        .ignoresSafeArea()
                 }
             }
         }
@@ -418,10 +420,14 @@ struct LibraryView: View {
         let k = CGFloat(n)
         let tileW: CGFloat
         if landscape {
-            // Rows = columns: the tiles' height fills the screen between the side columns.
+            // Rows = columns: the tiles' height fills the screen between the side columns. Measured on
+            // the whole screen, as Android: its 76dp per side (8 + 52 key + 16) counted from the screen
+            // edge, the key columns just past the Dynamic Island (libEdge).
             let fullH = size.height + insets.top + insets.bottom
+            let fullW = size.width + insets.leading + insets.trailing
             let h = (fullH - s(16) - gap * (k - 1)) / k
-            tileW = max(10, min(h * 16 / 9, (size.width - s(76) * 2 - gap * (k - 1)) / k))
+            let keysW = max(libEdge(insets.leading, dp: 8), libEdge(insets.trailing, dp: 8)) + s(52 + 16)
+            tileW = max(10, min(h * 16 / 9, (fullW - keysW * 2 - gap * (k - 1)) / k))
         } else {
             tileW = max(10, (size.width - s(16) - gap * (k - 1)) / k)
         }
@@ -466,7 +472,9 @@ struct LibraryView: View {
 
     // MARK: keys (Library.kt:311-348)
 
-    private func sideKeys(_ shown: [LibClip]) -> some View {
+    /// Library.kt:329-337: columns 8dp in from the screen's edges, centred on the screen's height.
+    /// Here from the screen's edges too (not the safe area), just past the Dynamic Island.
+    private func sideKeys(_ shown: [LibClip], insets: EdgeInsets) -> some View {
         HStack(spacing: 0) {
             // Left: what's shown and how big; right: views, sound, undo, help, close.
             VStack(spacing: s(10)) {
@@ -478,7 +486,10 @@ struct LibraryView: View {
                 closeKey; singleKey(shown); soundKey; undoKey; helpKey
             }
         }
-        .padding(.horizontal, s(8))
+        .padding(.leading, libEdge(insets.leading, dp: 8))
+        .padding(.trailing, libEdge(insets.trailing, dp: 8))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea()
     }
 
     private func barKeys(_ shown: [LibClip]) -> some View {
@@ -578,6 +589,8 @@ struct LibraryView: View {
             .fixedSize()
             .plate(cineRect(s(16)), fill: Color.sortCard, border: Color.edge)
         }
+        // Centred on the whole screen, as Android's.
+        .ignoresSafeArea()
     }
 
     @ViewBuilder private func toast(_ landscape: Bool) -> some View {
@@ -590,6 +603,9 @@ struct LibraryView: View {
                     .overlay(Capsule().strokeBorder(Color.edge, lineWidth: s(1)))
                     .padding(.bottom, landscape ? s(24) : s(64 + 16))
             }
+            .frame(maxWidth: .infinity)
+            // Landscape: 24dp from the screen's bottom edge, as Android (no bar there).
+            .ignoresSafeArea(edges: landscape ? .bottom : [])
             .allowsHitTesting(false)
         }
     }
@@ -867,7 +883,8 @@ private struct TileChip: View {
     let small: Bool
     private let s = CineScale.player
     var body: some View {
-        Text(text).font(s.font(small ? 11 : 13)).monospacedDigit().foregroundStyle(Color.ivory)
+        // Jost's own (proportional) digits, as Android: no monospacedDigit.
+        Text(text).font(s.font(small ? 11 : 13)).foregroundStyle(Color.ivory)
             .padding(.horizontal, s(8)).padding(.vertical, s(2))
             .background(Capsule().fill(Color.plate))
             .padding(s(6))
@@ -987,6 +1004,20 @@ final class TilePlayer: ObservableObject {
 }
 
 // MARK: - shared pieces (also used by Player.swift and Backup.swift)
+
+/// Where a key column centred on a landscape side edge goes (library key columns, player In / Out),
+/// from the screen's edge: Android's `dp`, but past a notch or the Dynamic Island when there is one
+/// (a safe-area inset over 20 pt; the island ends about 48 pt in, the inset is 59-62).
+func libEdge(_ inset: CGFloat, dp: CGFloat, scale s: CineScale = .player) -> CGFloat {
+    inset > 20 ? max(s(dp), inset - 12) : s(dp)
+}
+
+/// Where keys along the top or bottom of a landscape screen go (player rows, time strip), from the
+/// screen's side edge: Android's `dp`, but clear of the rounded corners (0.55 of the safe-area inset,
+/// as the camera screen does).
+func libCorner(_ inset: CGFloat, dp: CGFloat, scale s: CineScale = .player) -> CGFloat {
+    max(s(dp), inset * 0.55)
+}
 
 extension Color {
     /// Old names, kept for anyone still using them: Android's StarAmber and Green (Theme.swift).

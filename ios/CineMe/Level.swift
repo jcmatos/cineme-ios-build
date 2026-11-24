@@ -17,6 +17,10 @@ final class Level: ObservableObject {
     private var fake = false
 
     func start() {
+        #if targetEnvironment(simulator)
+        // No motion in the simulator: show the pill level (0.0°, green) as a phone held level would.
+        if !motion.isDeviceMotionAvailable { tilt = 0; pitch = 0; return }
+        #endif
         guard !fake, motion.isDeviceMotionAvailable, !motion.isDeviceMotionActive else { return }
         motion.deviceMotionUpdateInterval = 1.0 / 30
         motion.startDeviceMotionUpdates(using: .xArbitraryZVertical, to: .main) { [weak self] m, _ in
@@ -75,7 +79,8 @@ final class Level: ObservableObject {
 /// Spirit level as a pill of water (LevelPill.kt): 62dp x the status pill's height, Plate capsule,
 /// 1dp Brass border while the gimbal levels. Level = the bottom half green. Tilt the phone and the
 /// water stays flat while the pill turns, so its surface slopes; green <= 1°, yellow <= 3°, else
-/// red, Dim with no reading. Text 13sp w500 Ivory.
+/// red, Dim with no reading. Text 13sp w500 Ivory. (Over a black background only the water shows:
+/// the Plate's top half is black on black, as on Android.)
 /// Tap = the gimbal levels the horizon; long press = the moves.
 struct LevelPill: View {
     @Environment(\.cineScale) private var s

@@ -75,21 +75,26 @@ struct RemoteSettingsContent: View {
 
     private func row(_ b: RemoteButton) -> some View {
         let known = remote.learned.values.contains(b) || (b.isHold && remote.learned.values.contains(b.base))
-        return actionRow(id: b.rawValue, name: "\(b.arrow)  \(b.label)", value: remote.action(b),
+        return actionRow(id: b.rawValue, name: b.label, arrow: b.arrow, value: remote.action(b),
                          lit: lit == b, faint: !known && !remote.learned.isEmpty) { remote.setAction(b, $0) }
     }
 
     /// Android :116: r10 Plate row, padding 12x9, name in 120dp (Faint if not learned), action Brass;
-    /// Brass 35% for a moment when its button is pressed. Tap: the actions under it.
+    /// Brass 35% for a moment when its button is pressed. Tap: the actions under it. The arrow
+    /// ("▲  Up") at Android's size (PaneArrow), two spaces' gap.
     @ViewBuilder
-    private func actionRow(id: String, name: String, value: RemoteAction, lit: Bool = false, faint: Bool = false,
-                           set: @escaping (RemoteAction) -> Void) -> some View {
+    private func actionRow(id: String, name: String, arrow: String? = nil, value: RemoteAction, lit: Bool = false,
+                           faint: Bool = false, set: @escaping (RemoteAction) -> Void) -> some View {
         Button {
             open = open == id ? nil : id
         } label: {
             HStack(alignment: .center, spacing: 0) {
-                Text(name).foregroundStyle(faint ? Color.faint : Color.ivory)
-                    .frame(width: s(120), alignment: .leading)
+                HStack(alignment: .center, spacing: s(11)) {
+                    if let a = arrow { PaneArrow(a) }
+                    Text(name)
+                }
+                .foregroundStyle(faint ? Color.faint : Color.ivory)
+                .frame(width: s(120), alignment: .leading)
                 Text(value.label).foregroundStyle(Color.brass)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
