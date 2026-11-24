@@ -496,8 +496,8 @@ final class Camera: NSObject, ObservableObject, AVCaptureFileOutputRecordingDele
         // Apple lets ProRes RAW go only to an external drive: to the phone's own storage
         // startRecording throws (an uncatchable crash, seen 24 Nov 2026 on iOS 27).
         if codec.isRAW {
-            let internal = ext.flatMap { try? $0.resourceValues(forKeys: [.volumeIsInternalKey]).volumeIsInternal } ?? false
-            if ext == nil || internal {
+            let onPhone = ext.flatMap { try? $0.resourceValues(forKeys: [.volumeIsInternalKey]).volumeIsInternal } ?? false
+            if ext == nil || onPhone {
                 let why = "ProRes RAW records only to a USB-C drive: plug one in and pick it in Settings > Save to"
                 RecLog.w("NOT RECORDED: \(why)")
                 Beeper.shared.alarm()
