@@ -198,8 +198,11 @@ final class Camera: NSObject, ObservableObject, AVCaptureFileOutputRecordingDele
         publish { self.formatsList = list }
         Camera.saveFormats(list, lens: lens.label)
 
-        guard let fmt = pickFormat(dev, res: resolution, fps: fps, look: look, codec: codec) else {
-            let what = "\(resolution.rawValue) \(fps) fps \(codec.isRAW ? "" : look.rawValue + " ")\(codec.rawValue)"
+        // Open gate is ProRes RAW only (Settings sets 4K when the codec changes; this is in case).
+        if resolution.rawOnly && !codec.isRAW { publish { self.resolution = .uhd } }
+        let res: Resolution = resolution.rawOnly && !codec.isRAW ? .uhd : resolution
+        guard let fmt = pickFormat(dev, res: res, fps: fps, look: look, codec: codec) else {
+            let what = "\(res.rawValue) \(fps) fps \(codec.isRAW ? "" : look.rawValue + " ")\(codec.rawValue)"
             if codec.isRAW {
                 let raw = dev.formats.filter { $0.isRawLike }.map { $0.summary }
                 RecLog.w("no RAW format for \(what) on \(lens.label); sensor formats: " + (raw.isEmpty ? "none" : raw.joined(separator: " | ")))
@@ -237,7 +240,7 @@ final class Camera: NSObject, ObservableObject, AVCaptureFileOutputRecordingDele
         }
         let range = fmt.minISO...fmt.maxISO
         let stops = apertureStopsOf(fmt)
-        let text = "\(resolution.rawValue)\(fps) \(codec.isRAW ? "" : look.rawValue + " · ")\(codec.rawValue)"
+        let text = "\(res.label(fps)) \(codec.isRAW ? "" : look.rawValue + " · ")\(codec.rawValue)"
         publish {
             self.isoRange = range
             self.apertureStops = stops

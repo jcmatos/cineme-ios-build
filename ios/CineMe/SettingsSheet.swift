@@ -92,6 +92,7 @@ struct SettingsPanel: View {
         .onChange(of: camera.look) { _, _ in camera.reconfigure() }
         .onChange(of: camera.codec) { _, c in
             if !c.allows(camera.look) { camera.look = .sdr }
+            if !c.isRAW && camera.resolution.rawOnly { camera.resolution = .uhd }
             camera.reconfigure()
         }
         .onChange(of: camera.stabilization) { _, _ in camera.reconfigure() }
@@ -341,7 +342,7 @@ private struct VideoPage: View {
     @ObservedObject var camera: Camera
 
     var body: some View {
-        PaneOpt("Resolution", Resolution.allCases, camera.resolution, title: { $0.rawValue }) { camera.resolution = $0 }
+        PaneOpt("Resolution", Resolution.allCases.filter { !$0.rawOnly || camera.codec.isRAW }, camera.resolution, title: { $0.rawValue }) { camera.resolution = $0 }
         PaneOpt("Frame rate", frameRates, camera.fps, title: { "\($0)" }) { camera.fps = $0 }
         PaneOpt("Codec", Codec.allCases, camera.codec, title: { $0.rawValue }) { camera.codec = $0 }
         if !camera.codec.isRAW {
@@ -355,6 +356,7 @@ private struct VideoPage: View {
         if let p = camera.problem { return p }
         var s = "Now: \(camera.formatText)."
         if camera.codec.isProRes { s += " ProRes files are large (4K30 422 HQ about 6 GB a minute; ProRes RAW over 10 GB). ProRes RAW records only to a USB-C drive (Save to)." }
+        if camera.codec.isRAW { s += " Open gate 4:3: the sensor's full height (4224x3024, up to 60 fps), for anamorphic lenses or reframing later." }
         if camera.look == .log2 || camera.look == .log { s += " Log looks flat: grade it, or use Apple's LUT." }
         if camera.fps >= 100 { s += " 100 and 120 fps: Fusion Main (1x) only." }
         return s

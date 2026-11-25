@@ -93,6 +93,10 @@ final class LockedCamera: NSObject, ObservableObject, AVCaptureFileOutputRecordi
         var fps = ctx?.fps ?? 30
         var look = Look(rawValue: ctx?.look ?? "") ?? .sdr
         var codec = Codec(rawValue: ctx?.codec ?? "") ?? .hevc
+        // ProRes RAW goes only to a USB-C drive (iOS throws, and the extension would crash): here it is
+        // ProRes 422 HQ in Apple Log 2, 4K up to 60 fps, the nearest the phone itself can record.
+        if codec.isRAW { codec = .proRes422HQ; look = .log2; fps = min(fps, 60) }
+        if res.rawOnly && !codec.isRAW { res = .uhd }
         if !codec.allows(look) { look = .sdr }
         var fmt = pickFormat(dev, res: res, fps: fps, look: look, codec: codec)
         if fmt == nil {

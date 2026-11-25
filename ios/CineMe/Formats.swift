@@ -60,14 +60,20 @@ enum Codec: String, CaseIterable, Identifiable {
     func allows(_ look: Look) -> Bool { self == .h264 ? look == .sdr : true }
 }
 
-/// 16:9 sizes. (The 48 MP sensors also have 4:3 "open gate" formats; those show in the formats list.)
+/// 16:9 sizes, and ProRes RAW's 4:3 open gate (the sensor's full height, 4224x3024 up to 60 fps on the
+/// 18 Pro's Fusion Main; the other 4:3 formats are 8-bit photo ones, no good for video).
 enum Resolution: String, CaseIterable, Identifiable {
     case uhd = "4K"
     case fhd = "1080p"
     case hd = "720p"
+    case openGate = "Open gate 4:3"
     var id: String { rawValue }
-    var width: Int32 { self == .uhd ? 3840 : self == .fhd ? 1920 : 1280 }
-    var height: Int32 { self == .uhd ? 2160 : self == .fhd ? 1080 : 720 }
+    var width: Int32 { self == .openGate ? 4224 : self == .uhd ? 3840 : self == .fhd ? 1920 : 1280 }
+    var height: Int32 { self == .openGate ? 3024 : self == .uhd ? 2160 : self == .fhd ? 1080 : 720 }
+    /// Only with ProRes RAW.
+    var rawOnly: Bool { self == .openGate }
+    /// For the format line: "4K60", "Open gate 4:3 24".
+    func label(_ fps: Int) -> String { rawOnly ? "\(rawValue) \(fps)" : "\(rawValue)\(fps)" }
 }
 
 let frameRates: [Int] = [24, 25, 30, 48, 50, 60, 100, 120, 240]
@@ -144,10 +150,14 @@ func pickFormat(_ device: AVCaptureDevice, res: Resolution, fps: Int, look: Look
     }
     if codec.isRAW {
         // The sensor formats don't always have the exact video size (the RAW frame is the sensor's
-        // own crop): the exact size first, else the nearest at this frame rate, larger before smaller.
+        // own crop): the exact size first, else the nearest shape (16:9 or 4:3), then the nearest
+        // width, larger before smaller. (The 18 Pro: 4224x2240 for 16:9, 4224x3024 for open gate.)
         let raw = device.formats.filter { $0.isBayer && $0.supports(fps: fps) }
         if let exact = raw.first(where: { $0.size.width == res.width && $0.size.height == res.height }) { return exact }
+        let want = Double(res.width) / Double(res.height)
+        func shape(_ f: AVCaptureDevice.Format) -> Double { abs(Double(f.size.width) / Double(max(f.size.height, 1)) - want) }
         return raw.sorted { a, b in
+            if abs(shape(a) - shape(b)) > 0.05 { return shape(a) < shape(b) }
             let da = abs(Int(a.size.width) - Int(res.width)), db = abs(Int(b.size.width) - Int(res.width))
             if da != db { return da < db }
             return a.size.width > b.size.width
