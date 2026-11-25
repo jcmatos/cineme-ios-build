@@ -138,7 +138,8 @@ let helpSections: [(String, [String])] = [
     ("TRACKING", [
         "Track (bottom bar), then drag a box round the subject (or tap it). The gimbal keeps the subject where you picked it, not in the centre.",
         "Track again, or MODE on the gimbal, stops it.",
-        "Settings > Tracking: smoothness, max speed, dead zone, pan only, directions.",
+        "From the gimbal, no fingers: aim so the subject is in the dotted square in the middle, then push the slider W, T, W, T fast. MODE on the gimbal stops it. Exposure stays where it was.",
+        "Settings > Tracking: smoothness, max speed, dead zone, pan only, directions, quick start on or off.",
         "Arms trigger (Settings > Tracking): film yourself. Stand 3 to 10 m in front of the camera, raise both arms above your head and hold a second: the light flashes once, it records and tracks you. Arms up again: it stops and flashes twice.",
         "Not with ProRes (the camera can't send the frames then), not during a time-lapse.",
     ]),
@@ -157,7 +158,7 @@ let helpSections: [(String, [String])] = [
         "Record, or Time-lapse again, stops it early; the clip is kept. No sound. Not with ProRes RAW. Keep the phone plugged in for long ones.",
     ]),
     ("VIDEO MANAGER", [
-        "Play key (right): the clips on the iPhone as a grid. − / + or pinch: more or fewer across. Not while recording.",
+        "Play key (right): the clips on the iPhone (and on the USB-C drive while it is plugged in, marked USB) as a grid. − / + or pinch: more or fewer across. Not while recording.",
         "Tap a clip: full screen. Tap = pause / play; drag left / right = scrub (one screen width = the whole clip).",
         "Star: keep it (it can't be deleted until the star is off). Bin: kept 30 days, with Undo (the curved arrow).",
         "Order: newest / oldest, biggest / smallest, longest / shortest, starred first, name.",

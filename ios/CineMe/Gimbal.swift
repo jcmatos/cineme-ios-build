@@ -494,7 +494,7 @@ struct GimbalPanel: View {
                 VStack(alignment: .leading, spacing: 0) {
                     PaneSliderRow("Follow speed", value: gimbal.followBinding, range: 1...5, low: "Smooth", high: "Fast")
                     PaneSliderRow("Joystick speed", value: gimbal.joystickBinding, range: 1...5, low: "Slow", high: "Fast")
-                    CineNote("Record: start / stop (also stops a time-lapse). Slider: brighter (W) / darker (T). Slider held: W = next lens, T = Auto light. MODE: stops tracking.")
+                    CineNote("Record: start / stop (also stops a time-lapse). Slider: brighter (W) / darker (T); W, T, W, T fast: track the dotted square. Slider held: W = next lens, T = Auto light. MODE: stops tracking.")
                 }
             }
             .scrollIndicators(.hidden)
@@ -562,7 +562,7 @@ struct GimbalSettingsPage: View {
         PaneSliderRow("Follow speed", value: gimbal.followBinding, range: 1...5, low: "Smooth", high: "Fast")
         PaneSliderRow("Joystick speed", value: gimbal.joystickBinding, range: 1...5, low: "Slow", high: "Fast")
         CineNote("Sent to the gimbal when it connects, and at once while it is connected.")
-        CineNote("Record: start / stop (also stops a time-lapse). Slider: brighter (W) / darker (T). Slider held: W = next lens, T = Auto light. MODE: stops tracking.")
+        CineNote("Record: start / stop (also stops a time-lapse). Slider: brighter (W) / darker (T); W, T, W, T fast: track the dotted square. Slider held: W = next lens, T = Auto light. MODE: stops tracking.")
         FlowRow(spacing: s(6), lineSpacing: s(6)) {
             CinePill("Pairing and log", action: onPairing)
             CinePill("Search again") { gimbal.reconnect() }

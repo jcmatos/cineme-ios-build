@@ -45,8 +45,9 @@ struct CineMeApp: App {
                         }
                         switch e {
                         case .shutter: RecLog.w("gimbal record button"); camera.toggleRecord()
-                        case .sliderW: camera.exposureStep(1)
-                        case .sliderT: camera.exposureStep(-1)
+                        // W, T, W, T fast: tracking starts on the dotted square (Tracking.swift quickPush).
+                        case .sliderW: if !Rig.shared.tracker.quickPush(true) { camera.exposureStep(1) }
+                        case .sliderT: if !Rig.shared.tracker.quickPush(false) { camera.exposureStep(-1) }
                         case .holdW: camera.nextLens()
                         case .holdT: camera.autoOnce()
                         case .release, .mode: break

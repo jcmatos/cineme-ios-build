@@ -19,6 +19,8 @@ struct LibClip: Identifiable, Equatable {
     var fake = false
     /// Fake tiles only: their colour.
     var hue: Double = 0
+    /// On the USB-C drive picked in Settings > Save to (not in the app's folder).
+    var onDrive = false
     var id: String { name }
 }
 
@@ -81,7 +83,12 @@ final class ClipStore: ObservableObject {
     @Published private(set) var messageID = 0
 
     let folder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-    var bin: URL { folder.appendingPathComponent(".trash", isDirectory: true) }
+    /// The bin next to a clip: the app's Documents/.trash, or .trash in the drive's folder (a move on
+    /// the same disk is instant; copying a big clip to the phone and back is not).
+    private func binOf(_ c: LibClip) -> URL { c.url.deletingLastPathComponent().appendingPathComponent(".trash", isDirectory: true) }
+    /// The folder picked on a USB-C drive, kept open while it is plugged in; and the bookmark it came from.
+    private var drive: URL?
+    private var driveBookmark: Data?
     /// Same format as Android's marks, so the PC Video Manager can read it: {"name": {"star": true, "in": 1.2, "out": 4.0}}.
     private var marksFile: URL { folder.appendingPathComponent("cineme-marks.json") }
     /// Clips stay in the bin this long, then go for good.
@@ -106,25 +113,49 @@ final class ClipStore: ObservableObject {
 
     // MARK: list
 
-    /// Reads the folder again. Main thread.
+    /// Reads the folder again (and the drive's, when it is plugged in). Main thread.
     func reload() {
         loadMarks()
         samplesOnly = false
         let keys: [URLResourceKey] = [.fileSizeKey, .creationDateKey, .isRegularFileKey]
-        let urls = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
+        var dirs = [(folder, false)]
+        if !shotRun, let d = openDrive() { dirs.append((d, true)) }
         var list: [LibClip] = []
-        for u in urls where ["mov", "mp4", "m4v"].contains(u.pathExtension.lowercased()) {
-            let v = try? u.resourceValues(forKeys: Set(keys))
-            if v?.isRegularFile == false { continue }
-            let name = u.lastPathComponent
-            list.append(LibClip(url: u, name: name, taken: Self.takenDate(name) ?? v?.creationDate ?? .distantPast,
-                                bytes: Int64(v?.fileSize ?? 0)))
+        for (dir, onDrive) in dirs {
+            let urls = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
+            for u in urls where ["mov", "mp4", "m4v"].contains(u.pathExtension.lowercased()) {
+                let v = try? u.resourceValues(forKeys: Set(keys))
+                if v?.isRegularFile == false { continue }
+                let name = u.lastPathComponent
+                // The same name twice (a clip copied by hand): the phone's one is shown.
+                if list.contains(where: { $0.name == name }) { continue }
+                list.append(LibClip(url: u, name: name, taken: Self.takenDate(name) ?? v?.creationDate ?? .distantPast,
+                                    bytes: Int64(v?.fileSize ?? 0), onDrive: onDrive))
+            }
         }
         if list.isEmpty && shotRun { list = samples() }
         clips = list
         purgeBin()
         countBin()
         loadLengths()
+    }
+
+    /// The drive's folder (Settings > Save to), opened once and kept open; nil when none is picked or it
+    /// isn't plugged in. Picking another folder opens that one instead.
+    private func openDrive() -> URL? {
+        let data = UserDefaults.standard.data(forKey: "extBookmark")
+        if let d = drive, data == driveBookmark, (try? d.checkResourceIsReachable()) == true { return d }
+        drive?.stopAccessingSecurityScopedResource()
+        drive = nil
+        driveBookmark = nil
+        guard let data = data else { return nil }
+        var stale = false
+        guard let u = try? URL(resolvingBookmarkData: data, options: [], relativeTo: nil, bookmarkDataIsStale: &stale),
+              u.startAccessingSecurityScopedResource() else { return nil }
+        guard (try? u.checkResourceIsReachable()) == true else { u.stopAccessingSecurityScopedResource(); return nil }
+        drive = u
+        driveBookmark = data
+        return u
     }
 
     func mark(_ name: String) -> ClipMark { marks[name] ?? ClipMark() }
@@ -248,7 +279,7 @@ final class ClipStore: ObservableObject {
 
     // MARK: bin
 
-    /// To the bin (Documents/.trash), with undo. A starred clip stays.
+    /// To the bin (Documents/.trash, or the drive's .trash), with undo. A starred clip stays.
     func trash(_ c: LibClip) {
         if mark(c.name).star { say("Starred: un-star it first"); return }
         if c.fake {
@@ -258,6 +289,7 @@ final class ClipStore: ObservableObject {
             return
         }
         let fm = FileManager.default
+        let bin = binOf(c)
         try? fm.createDirectory(at: bin, withIntermediateDirectories: true)
         let dest = bin.appendingPathComponent(c.name)
         try? fm.removeItem(at: dest)
@@ -272,7 +304,7 @@ final class ClipStore: ObservableObject {
 
     private func restore(_ c: LibClip) {
         let fm = FileManager.default
-        let src = bin.appendingPathComponent(c.name)
+        let src = binOf(c).appendingPathComponent(c.name)
         guard fm.fileExists(atPath: src.path), !fm.fileExists(atPath: c.url.path) else { return }
         try? fm.moveItem(at: src, to: c.url)
         if !clips.contains(where: { $0.name == c.name }) { clips.append(c) }
@@ -287,9 +319,13 @@ final class ClipStore: ObservableObject {
         say("Bin emptied")
     }
 
+    /// What is in the phone's bin and the drive's (when it is plugged in).
     private func binFiles() -> [URL] {
-        (try? FileManager.default.contentsOfDirectory(at: bin, includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey],
-                                                      options: [.skipsHiddenFiles])) ?? []
+        let bins = ([folder] + (drive.map { [$0] } ?? [])).map { $0.appendingPathComponent(".trash", isDirectory: true) }
+        return bins.flatMap {
+            (try? FileManager.default.contentsOfDirectory(at: $0, includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey],
+                                                          options: [.skipsHiddenFiles])) ?? []
+        }
     }
 
     private func purgeBin() {
@@ -674,6 +710,7 @@ let libraryHelp: [(String, [String])] = [
         "Sound is off until you turn it on with the speaker (grid or full screen). The curved arrow undoes the last steps (delete, star, in / out), one per tap.",
         "Star (top right of a tile): keep it. A starred clip can't be deleted until the star is taken off. The star at the top shows only the starred ones.",
         "Bin: to CineMe's bin (kept 30 days), with Undo. Empty the bin at the bottom of this page.",
+        "Clips on the USB-C drive (Settings > Save to) show too while it is plugged in, marked USB. Their bin is on the drive.",
         "Compare: the clips on screen play side by side, muted (2 across).",
         "Full screen: grid button back, sound, previous (older), next (newer), delete. Top right: star, map (where it was filmed, Apple Maps), X closes.",
         "In / out (the brackets at the side): in = the frame on screen, and the out point goes 1 s later; out moves only the end, so the part can be made longer. X clears them. Green on the bar and on the tile.",
@@ -786,8 +823,10 @@ private struct ClipTile: View {
     /// Not playing: the length chip and the in / out line.
     @ViewBuilder private func still(_ mark: ClipMark) -> some View {
         let len = store.length(clip)
+        // "USB" on the drive's clips.
+        let chip = [clip.onDrive ? "USB" : nil, len > 0 ? clipClock(len) : nil].compactMap { $0 }.joined(separator: " · ")
         ZStack {
-            if !tiny && len > 0 { TileChip(text: clipClock(len), small: small) }
+            if !tiny && !chip.isEmpty { TileChip(text: chip, small: small) }
             if len > 0 && mark.hasRange { TileLine(position: nil, length: len, mark: mark) }
         }
     }

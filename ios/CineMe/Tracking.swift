@@ -34,6 +34,12 @@ final class Tracker: ObservableObject {
     @Published var panOnly: Bool = UserDefaults.standard.bool(forKey: "trackPanOnly") { didSet { UserDefaults.standard.set(panOnly, forKey: "trackPanOnly") } }
     @Published var invertPan: Bool = UserDefaults.standard.bool(forKey: "trackInvertPan") { didSet { UserDefaults.standard.set(invertPan, forKey: "trackInvertPan") } }
     @Published var invertTilt: Bool = UserDefaults.standard.bool(forKey: "trackInvertTilt") { didSet { UserDefaults.standard.set(invertTilt, forKey: "trackInvertTilt") } }
+    /// Quick start: the dotted square in the middle; gimbal slider W, T, W, T fast tracks what is in it.
+    @Published var quick: Bool = UserDefaults.standard.object(forKey: "trackQuick") as? Bool ?? true { didSet { UserDefaults.standard.set(quick, forKey: "trackQuick") } }
+    /// The dotted square, 0..1 of the picture (AimSquare sets it). Main thread.
+    var aimBox: CGRect? = nil
+    /// The last slider pushes: W or T, when, and the exposure before it. Main thread.
+    private var pushes: [(w: Bool, at: TimeInterval, auto: Bool, iso: Float, shutter: Int32)] = []
 
     weak var camera: Camera?
     weak var gimbal: Gimbal?
@@ -77,6 +83,34 @@ final class Tracker: ObservableObject {
         if mode != .idle { stop(); return }
         guard canStart() else { return }
         mode = .selecting
+    }
+
+    /// A short push of the gimbal slider (main thread). True if it made W, T, W, T (or T, W, T, W) within
+    /// 2 s: the exposure steps those pushes made are undone and tracking starts on the dotted square.
+    /// (Android MainActivity.quickGesture.)
+    func quickPush(_ w: Bool) -> Bool {
+        guard quick, let c = camera else { return false }
+        let now = ProcessInfo.processInfo.systemUptime
+        pushes.append((w, now, c.autoExposure, c.iso, c.shutter))
+        if pushes.count > 4 { pushes.removeFirst(pushes.count - 4) }
+        let p = pushes
+        guard p.count == 4, (1..<4).allSatisfy({ p[$0].w != p[$0 - 1].w }), now - p[0].at <= 2 else { return false }
+        pushes.removeAll()
+        c.autoExposure = p[0].auto
+        c.iso = p[0].iso
+        c.shutter = p[0].shutter
+        c.setExposure()
+        quickStart()
+        return true
+    }
+
+    /// Tracks what is in the dotted square. Only starts: MODE on the gimbal stops it.
+    private func quickStart() {
+        guard mode == .idle, let b = aimBox, canStart() else { return }
+        msg("Tracking")
+        select(b)
+        // The camera focuses on it (the middle of the picture).
+        camera?.focus(at: CGPoint(x: 0.5, y: 0.5))
     }
 
     private func canStart() -> Bool {
@@ -368,6 +402,7 @@ struct TrackLayer: View {
             let aspect = tracker.frameAspect ?? (landscape ? 16.0 / 9 : 9.0 / 16)
             let pic = AVMakeRect(aspectRatio: CGSize(width: aspect, height: 1), insideRect: bounds)
             ZStack {
+                AimSquare(tracker: tracker, camera: camera, pic: pic)
                 if tracker.mode == .selecting {
                     Color.black.opacity(0.001)
                         .contentShape(Rectangle())
@@ -450,6 +485,38 @@ struct TrackLayer: View {
     }
 }
 
+/// Quick start's dotted square in the middle (CameraScreen.kt AimSquare): the focus frame plus 70%, then
+/// 20% bigger (146dp), 1.5dp Ivory at 35%. Shown while not tracking, with quick start on; not with ProRes
+/// (no tracking there).
+private struct AimSquare: View {
+    @Environment(\.cineScale) private var sc
+    @ObservedObject var tracker: Tracker
+    @ObservedObject var camera: Camera
+    let pic: CGRect
+
+    var body: some View {
+        let side = sc(146)
+        ZStack {
+            if tracker.quick && tracker.mode == .idle && !camera.codec.isProRes {
+                // Android's dash is 6 px on, 8 px off (about 2.3dp / 3dp).
+                Rectangle()
+                    .stroke(Color.ivory.opacity(0.35), style: StrokeStyle(lineWidth: sc(1.5), dash: [sc(2.3), sc(3)]))
+                    .frame(width: side, height: side)
+                    .position(x: pic.midX, y: pic.midY)
+            }
+        }
+        .allowsHitTesting(false)
+        .onAppear { setBox(side) }
+        .onChange(of: pic) { _, _ in setBox(side) }
+    }
+
+    private func setBox(_ side: CGFloat) {
+        guard pic.width > 0, pic.height > 0 else { return }
+        let w = min(side / pic.width, 1), h = min(side / pic.height, 1)
+        tracker.aimBox = CGRect(x: 0.5 - w / 2, y: 0.5 - h / 2, width: w, height: h)
+    }
+}
+
 /// The tracking frame: corner brackets a quarter of the short side long (CameraScreen.kt:795).
 struct TrackBrackets: Shape {
     let rect: CGRect
@@ -499,6 +566,8 @@ struct TrackSettingsSection: View {
             PaneOpt("Axes", [false, true], tracker.panOnly, title: { $0 ? "Pan only" : "Pan + tilt" }) { tracker.panOnly = $0 }
             PaneOpt("Pan direction", [false, true], tracker.invertPan, title: { $0 ? "Inverted" : "Normal" }) { tracker.invertPan = $0 }
             PaneOpt("Tilt direction", [false, true], tracker.invertTilt, title: { $0 ? "Inverted" : "Normal" }) { tracker.invertTilt = $0 }
+            PaneOpt("Quick start from gimbal", [true, false], tracker.quick, title: { $0 ? "On" : "Off" }) { tracker.quick = $0 }
+            CineNote("Quick start: push the gimbal slider W, T, W, T fast to track what is in the dotted square. MODE on the gimbal stops tracking.")
             PaneOnOff("Arms trigger", isOn: Binding(get: { tracker.arms != .off }, set: { tracker.setArms($0) }))
             CineNote("Track: drag a box around the subject; the gimbal keeps it where you picked it. MODE on the gimbal stops it. Arms trigger: raise both arms for a second to start recording and tracking, again to stop. Not with ProRes.")
         }
