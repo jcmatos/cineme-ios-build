@@ -485,11 +485,23 @@ final class Camera: NSObject, ObservableObject, AVCaptureFileOutputRecordingDele
         queue.async { self.photo.queueOn = on; self.configure() }
     }
 
-    private func startRecording() {
+    private func startRecording(wbLocked: Bool = false) {
         guard problem == nil else {
             RecLog.w("NOT RECORDED: \(problem ?? "?")")
             Beeper.shared.alarm()
             publish { self.notRecorded = self.problem }
+            return
+        }
+        // ProRes RAW records only with the white balance locked (iOS 27: "White balance mode is not
+        // locked.", seen 26 Nov 2026; in RAW it is only a tag, the picture keeps everything). Auto
+        // locks where it is now, and goes back to auto after the take.
+        if codec.isRAW, !wbLocked, let dev = device, dev.whiteBalanceMode != .locked,
+           dev.isWhiteBalanceModeSupported(.locked), (try? dev.lockForConfiguration()) != nil {
+            dev.setWhiteBalanceModeLocked(with: AVCaptureDevice.currentWhiteBalanceGains) { _ in
+                self.queue.async { self.startRecording(wbLocked: true) }
+            }
+            dev.unlockForConfiguration()
+            RecLog.w("white balance locked for ProRes RAW")
             return
         }
         let name = "CineMe_" + Camera.stamp.string(from: Date()) + ".mov"
@@ -533,15 +545,29 @@ final class Camera: NSObject, ObservableObject, AVCaptureFileOutputRecordingDele
         clipStart = ClipClock.wallTime(of: startPTS, clock: session.synchronizationClock)
         publish { self.recording = true; self.recordStart = Date() }
     }
+    /// An error in full for the take log: the text, its domain and code, and the error under it
+    /// ("The operation could not be completed" alone says nothing).
+    static func detail(_ e: Error?) -> String {
+        guard let n = e as NSError? else { return "no file was written" }
+        var s = "\(n.localizedDescription) [\(n.domain) \(n.code)"
+        if let r = n.localizedFailureReason { s += "; \(r)" }
+        if let u = n.userInfo[NSUnderlyingErrorKey] as? NSError {
+            s += "; under it: \(u.domain) \(u.code) \(u.localizedDescription)"
+            if let uu = u.userInfo[NSUnderlyingErrorKey] as? NSError { s += "; \(uu.domain) \(uu.code)" }
+        }
+        return s + "]"
+    }
     /// Wall-clock time of the clip's first frame (ClipFinish.swift).
     private var clipStart: Date?
 
     func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo url: URL, from connections: [AVCaptureConnection], error: Error?) {
         publish { self.recording = false }
+        // Auto white balance again after a ProRes RAW take (startRecording locked it).
+        if codec.isRAW && autoWB { setWB() }
         let ext = externalURL   // the drive stays open until the clip is finished (ClipFinish)
         let ok = error == nil || ((error as NSError?)?.userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? Bool ?? false)
         guard ok, FileManager.default.fileExists(atPath: url.path) else {
-            RecLog.w("NOT RECORDED \(url.lastPathComponent): \(error?.localizedDescription ?? "no file was written")")
+            RecLog.w("NOT RECORDED \(url.lastPathComponent): \(Camera.detail(error))")
             ext?.stopAccessingSecurityScopedResource()
             Beeper.shared.alarm()
             publish { self.notRecorded = error?.localizedDescription ?? "No file was written" }
