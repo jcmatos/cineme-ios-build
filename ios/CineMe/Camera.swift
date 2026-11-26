@@ -520,6 +520,18 @@ final class Camera: NSObject, ObservableObject, AVCaptureFileOutputRecordingDele
                 return
             }
         }
+        // A drive the iPhone can only read (NTFS): every take fails with "Read-only file system"
+        // (seen 26 Nov 2026). Say so plainly instead.
+        if let ext = ext {
+            RecLog.w("drive: \(Camera.driveInfo(ext))")
+            if let why = Camera.readOnlyWhy(ext) {
+                ext.stopAccessingSecurityScopedResource()
+                RecLog.w("NOT RECORDED: \(why)")
+                Beeper.shared.alarm()
+                publish { self.notRecorded = why }
+                return
+            }
+        }
         let url = folder.appendingPathComponent(name)
         if let c = movie.connection(with: .video), let r = rotation {
             let a = r.videoRotationAngleForHorizonLevelCapture
@@ -739,6 +751,31 @@ final class Camera: NSObject, ObservableObject, AVCaptureFileOutputRecordingDele
             UserDefaults.standard.set(url.lastPathComponent, forKey: "extName")
             externalName = url.lastPathComponent
         }
+        RecLog.w("Save to: \(url.lastPathComponent), \(Camera.driveInfo(url))")
+        if let why = Camera.readOnlyWhy(url) { message = why }
+    }
+
+    /// The drive's format, free space and whether it can be written: for the take log.
+    static func driveInfo(_ url: URL) -> String {
+        let v = try? url.resourceValues(forKeys: [.volumeLocalizedFormatDescriptionKey, .volumeIsReadOnlyKey,
+                                                  .volumeAvailableCapacityKey, .volumeNameKey])
+        let free = v?.volumeAvailableCapacity.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) } ?? "?"
+        return "\(v?.volumeName ?? "?"), \(v?.volumeLocalizedFormatDescription ?? "format ?"), \(free) free\(v?.volumeIsReadOnly == true ? ", READ-ONLY" : "")"
+    }
+
+    /// Why the app can't write to this drive, or nil if it can. The iPhone reads NTFS but can't write it.
+    static func readOnlyWhy(_ url: URL) -> String? {
+        let v = try? url.resourceValues(forKeys: [.volumeIsReadOnlyKey, .volumeLocalizedFormatDescriptionKey])
+        var readOnly = v?.volumeIsReadOnly == true
+        if !readOnly {
+            // The flag isn't always set: try writing a tiny file.
+            let probe = url.appendingPathComponent(".cineme-write-test")
+            readOnly = (try? Data([1]).write(to: probe)) == nil
+            try? FileManager.default.removeItem(at: probe)
+        }
+        guard readOnly else { return nil }
+        let fmt = v?.volumeLocalizedFormatDescription ?? ""
+        return "The drive is read-only\(fmt.isEmpty ? "" : " (\(fmt))"): the iPhone can't write to NTFS. Format it as exFAT (or APFS)"
     }
 
     private func resolveExternal() -> URL? {
